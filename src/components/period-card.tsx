@@ -23,13 +23,17 @@ export function PeriodCard({
   onRemove,
 }: PeriodCardProps) {
   return (
-    <section className="overflow-hidden rounded-lg bg-[#1f2028] shadow-[0_16px_50px_rgba(0,0,0,0.20)]">
-      <header className="flex h-12 items-center justify-between border-b border-[#30313d]/70 px-5 sm:px-7">
+    <section className="overflow-hidden rounded-lg bg-surface-3 shadow-[0_16px_50px_rgba(0,0,0,0.20)]">
+      <header className="flex h-12 items-center justify-between border-b border-bd-muted/70 px-5 sm:px-7">
         <div className="flex items-center gap-3">
-          <Icon className={`size-4 ${iconClassName}`} fill="currentColor" strokeWidth={2.4} />
+          <Icon
+            className={`size-4 ${iconClassName}`}
+            fill="currentColor"
+            strokeWidth={2.4}
+          />
           <h2 className="text-base font-bold text-white">{title}</h2>
         </div>
-        <span className="text-sm font-bold text-[#a1a1aa]">{timeRange}</span>
+        <span className="text-sm font-bold text-muted">{timeRange}</span>
       </header>
 
       {appointments.length > 0 ? (
@@ -44,7 +48,7 @@ export function PeriodCard({
           ))}
         </ul>
       ) : (
-        <p className="border-t border-[#30313d]/60 px-5 py-6 text-sm text-[#71717a] sm:px-7">
+        <p className="border-t border-bd-muted/60 px-5 py-6 text-sm text-placeholder sm:px-7">
           Nenhum agendamento neste periodo.
         </p>
       )}

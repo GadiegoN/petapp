@@ -2,16 +2,328 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function hasProfile() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function role() {
+      return hasProfile() ? userProfile().data.role : "public";
+    }
+
+    function isAdmin() {
+      return role() == "admin";
+    }
+
+    function isPartner() {
+      return role() == "partner";
+    }
+
+    function isVolunteer() {
+      return role() == "volunteer";
+    }
+
+    function isActiveUser() {
+      return hasProfile() && userProfile().data.isActive == true;
+    }
+
+    function organizationIds() {
+      return hasProfile() && userProfile().data.organizationIds is list
+        ? userProfile().data.organizationIds
+        : [];
+    }
+
+    function belongsToOrganization(organizationId) {
+      return isActiveUser() && organizationId in organizationIds();
+    }
+
+    function isApprovedPublicResource() {
+      return resource.data.visibility == "public"
+        && resource.data.approvalStatus == "approved";
+    }
+
+    function willBePendingOrAdminApproved() {
+      return isAdmin()
+        || request.resource.data.approvalStatus == "pending";
+    }
+
+    function keepsImmutableOwner(ownerField) {
+      return resource.data[ownerField] == request.resource.data[ownerField];
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == "public"
+        && request.resource.data.isActive == true;
+
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.organizationIds == resource.data.organizationIds
+          && request.resource.data.isActive == resource.data.isActive
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /organizations/{organizationId} {
+      allow read: if isAdmin()
+        || belongsToOrganization(organizationId)
+        || (resource.data.isPublicPartner == true && resource.data.status == "approved");
+
+      allow create: if isActiveUser()
+        && request.resource.data.ownerUserId == request.auth.uid
+        && request.resource.data.status == "pending";
+
+      allow update: if isAdmin()
+        || (
+          isPartner()
+          && belongsToOrganization(organizationId)
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.ownerUserId == resource.data.ownerUserId
+        );
+
+      allow delete: if isAdmin();
+    }
+
     match /appointments/{appointmentId} {
-      allow read, delete: if request.auth != null
-        && resource.data.userId == request.auth.uid;
+      allow read: if isAdmin()
+        || (
+          isActiveUser()
+          && resource.data.organizationId is string
+          && belongsToOrganization(resource.data.organizationId)
+        )
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        );
 
-      allow create: if request.auth != null
-        && request.resource.data.userId == request.auth.uid;
+      allow create: if isActiveUser()
+        && (
+          (
+            request.resource.data.organizationId is string
+            && belongsToOrganization(request.resource.data.organizationId)
+          )
+          || request.resource.data.userId == request.auth.uid
+        );
 
-      allow update: if request.auth != null
-        && resource.data.userId == request.auth.uid
-        && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin()
+        || (
+          isActiveUser()
+          && resource.data.organizationId is string
+          && belongsToOrganization(resource.data.organizationId)
+          && request.resource.data.organizationId == resource.data.organizationId
+        )
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+        );
+
+      allow delete: if isAdmin()
+        || (
+          isActiveUser()
+          && resource.data.organizationId is string
+          && belongsToOrganization(resource.data.organizationId)
+        )
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        );
+    }
+
+    match /tutors/{tutorId} {
+      allow read, update, delete: if isAdmin()
+        || belongsToOrganization(resource.data.organizationId);
+
+      allow create: if belongsToOrganization(request.resource.data.organizationId);
+    }
+
+    match /domesticPets/{petId} {
+      allow read, update, delete: if isAdmin()
+        || belongsToOrganization(resource.data.organizationId);
+
+      allow create: if belongsToOrganization(request.resource.data.organizationId);
+    }
+
+    match /services/{serviceId} {
+      allow read: if isAdmin()
+        || belongsToOrganization(resource.data.organizationId);
+
+      allow create: if belongsToOrganization(request.resource.data.organizationId);
+
+      allow update, delete: if isAdmin()
+        || belongsToOrganization(resource.data.organizationId);
+    }
+
+    match /products/{productId} {
+      allow read: if isAdmin()
+        || belongsToOrganization(resource.data.organizationId);
+
+      allow create: if belongsToOrganization(request.resource.data.organizationId);
+
+      allow update, delete: if isAdmin()
+        || belongsToOrganization(resource.data.organizationId);
+    }
+
+    match /petHealthRecords/{recordId} {
+      allow read, update, delete: if isAdmin()
+        || belongsToOrganization(resource.data.organizationId);
+
+      allow create: if belongsToOrganization(request.resource.data.organizationId);
+    }
+
+    match /streetDogs/{streetDogId} {
+      allow read: if isAdmin()
+        || isApprovedPublicResource()
+        || (
+          isActiveUser()
+          && (
+            resource.data.createdByUserId == request.auth.uid
+            || isVolunteer()
+            || isPartner()
+          )
+        );
+
+      allow create: if isActiveUser()
+        && (isAdmin() || isVolunteer() || isPartner())
+        && request.resource.data.createdByUserId == request.auth.uid
+        && willBePendingOrAdminApproved();
+
+      allow update: if isAdmin()
+        || (
+          isActiveUser()
+          && (isVolunteer() || isPartner())
+          && keepsImmutableOwner("createdByUserId")
+          && request.resource.data.approvalStatus == resource.data.approvalStatus
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /streetDogUpdates/{updateId} {
+      allow read: if isAdmin()
+        || resource.data.isPublic == true
+        || (
+          isActiveUser()
+          && (isVolunteer() || isPartner())
+        );
+
+      allow create: if isActiveUser()
+        && (isAdmin() || isVolunteer() || isPartner())
+        && request.resource.data.createdByUserId == request.auth.uid;
+
+      allow update, delete: if isAdmin()
+        || (
+          isActiveUser()
+          && resource.data.createdByUserId == request.auth.uid
+          && request.resource.data.createdByUserId == resource.data.createdByUserId
+        );
+    }
+
+    match /supportPoints/{supportPointId} {
+      allow read: if isAdmin()
+        || isApprovedPublicResource()
+        || (
+          isActiveUser()
+          && (
+            resource.data.createdByUserId == request.auth.uid
+            || (
+              resource.data.organizationId is string
+              && belongsToOrganization(resource.data.organizationId)
+            )
+            || isVolunteer()
+            || isPartner()
+          )
+        );
+
+      allow create: if isActiveUser()
+        && (isAdmin() || isVolunteer() || isPartner())
+        && request.resource.data.createdByUserId == request.auth.uid
+        && willBePendingOrAdminApproved();
+
+      allow update: if isAdmin()
+        || (
+          isActiveUser()
+          && keepsImmutableOwner("createdByUserId")
+          && request.resource.data.approvalStatus == resource.data.approvalStatus
+          && (
+            resource.data.createdByUserId == request.auth.uid
+            || isVolunteer()
+            || (
+              request.resource.data.organizationId is string
+              && belongsToOrganization(request.resource.data.organizationId)
+            )
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /supportPointUpdates/{updateId} {
+      allow read: if isAdmin()
+        || (
+          isActiveUser()
+          && (isVolunteer() || isPartner())
+        );
+
+      allow create: if isActiveUser()
+        && (isAdmin() || isVolunteer() || isPartner())
+        && request.resource.data.createdByUserId == request.auth.uid;
+
+      allow update, delete: if isAdmin()
+        || (
+          isActiveUser()
+          && resource.data.createdByUserId == request.auth.uid
+          && request.resource.data.createdByUserId == resource.data.createdByUserId
+        );
+    }
+
+    match /sponsors/{sponsorId} {
+      allow read: if isAdmin()
+        || (
+          resource.data.visibility == "public"
+          && resource.data.status == "active"
+        );
+
+      allow write: if isAdmin();
+    }
+
+    match /sponsorships/{sponsorshipId} {
+      allow read: if isAdmin()
+        || (
+          resource.data.publicDisplay == true
+          && resource.data.status == "active"
+        );
+
+      allow write: if isAdmin();
+    }
+
+    match /qrCodes/{qrCodeId} {
+      allow read: if resource.data.isActive == true || isAdmin();
+
+      allow create: if isActiveUser()
+        && (isAdmin() || isVolunteer() || isPartner())
+        && request.resource.data.createdByUserId == request.auth.uid;
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

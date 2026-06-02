@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { CalendarDays, Clock3, PawPrint, Phone, User, X } from "lucide-react";
 import type { Appointment, AppointmentFormData } from "@/types/appointment";
+import { Button } from "./ui/button";
 import { InputField } from "./ui/input-field";
 import { TextareaField } from "./ui/textarea-field";
 
@@ -34,7 +35,9 @@ export function AppointmentModal({
   onClose,
   onSubmit,
 }: AppointmentModalProps) {
-  const [form, setForm] = useState<AppointmentFormData>(() => emptyForm(selectedDate));
+  const [form, setForm] = useState<AppointmentFormData>(() =>
+    emptyForm(selectedDate),
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -72,29 +75,30 @@ export function AppointmentModal({
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-[#101018]/70 px-4 py-8 backdrop-blur-md"
+      className="fixed inset-0 z-30 flex items-center justify-center bg-background/70 px-4 py-8 backdrop-blur-md"
       onMouseDown={onClose}
       role="presentation"
     >
       <form
         onSubmit={handleSubmit}
         onMouseDown={(event) => event.stopPropagation()}
-        className="relative w-full max-w-[22rem] rounded-xl bg-[#1f2028] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.42)] sm:max-w-[29rem] sm:p-8"
+        className="relative w-full max-w-88 rounded-xl bg-surface-3 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.42)] sm:max-w-116 sm:p-8"
       >
-        <button
-          type="button"
+        <Button
           onClick={onClose}
           aria-label="Fechar modal"
-          className="absolute right-4 top-4 rounded-md p-1 text-[#a1a1aa] transition hover:bg-[#30313d] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9b87ff]"
+          variant="ghost"
+          size="icon"
+          className="absolute right-4 top-4"
+          icon={<X className="size-5" />}
         >
-          <X className="size-5" />
-        </button>
+        </Button>
 
         <div className="mb-7 pr-8">
           <h2 className="text-xl font-bold text-white">
             {appointment ? "Editar atendimento" : "Agende um atendimento"}
           </h2>
-          <p className="mt-2 text-sm leading-5 text-[#a1a1aa]">
+          <p className="mt-2 text-sm leading-5 text-muted">
             Preencha os dados do cliente para realizar o agendamento.
           </p>
         </div>
@@ -139,7 +143,6 @@ export function AppointmentModal({
               value={form.date}
               onChange={(event) => updateField("date", event.target.value)}
               icon={<CalendarDays className="size-4" />}
-              className="[color-scheme:dark]"
               required
             />
             <InputField
@@ -148,7 +151,6 @@ export function AppointmentModal({
               value={form.time}
               onChange={(event) => updateField("time", event.target.value)}
               icon={<Clock3 className="size-4" />}
-              className="[color-scheme:dark]"
               required
             />
           </div>
@@ -161,13 +163,14 @@ export function AppointmentModal({
         ) : null}
 
         <div className="mt-6 flex justify-end">
-          <button
+          <Button
             type="submit"
             disabled={isSaving}
-            className="h-11 rounded-lg bg-[#9b87ff] px-7 text-sm font-black text-[#070711] transition hover:bg-[#aa9aff] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#c4b8ff]"
+            variant="primary"
+            size="lg"
           >
             {isSaving ? "SALVANDO..." : appointment ? "SALVAR" : "AGENDAR"}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

@@ -15,11 +15,21 @@ import {
   signOut as firebaseSignOut,
   type User,
 } from "firebase/auth";
-import { auth, isFirebaseConfigured } from "@/lib/firebase";
+import {
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
+import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
+import { profileFromFirestore } from "@/lib/firebase/profile-mapper";
+import type { AuthenticatedProfile } from "@/types/domain";
 
 type AuthContextValue = {
   user: User | null;
+  profile: AuthenticatedProfile | null;
   isLoading: boolean;
+  isProfileLoading: boolean;
   isConfigured: boolean;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -29,7 +39,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<AuthenticatedProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
 
   useEffect(() => {
     if (!isFirebaseConfigured || !auth) {
@@ -43,10 +55,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  useEffect(() => {
+    if (!user || !db) {
+      setProfile(null);
+      setIsProfileLoading(false);
+      return;
+    }
+
+    setIsProfileLoading(true);
+
+    const userRef = doc(db, "users", user.uid);
+
+    return onSnapshot(
+      userRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setDoc(userRef, {
+            displayName: user.displayName ?? "",
+            email: user.email ?? "",
+            photoURL: user.photoURL ?? "",
+            role: "public",
+            organizationIds: [],
+            isActive: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            lastLoginAt: serverTimestamp(),
+          }).catch(() => {
+            setIsProfileLoading(false);
+          });
+          return;
+        }
+
+        setProfile(profileFromFirestore(snapshot.id, snapshot.data()));
+        setIsProfileLoading(false);
+      },
+      () => {
+        setProfile(null);
+        setIsProfileLoading(false);
+      },
+    );
+  }, [user]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
+      profile,
       isLoading,
+      isProfileLoading,
       isConfigured: isFirebaseConfigured,
       signInWithGoogle: async () => {
         if (!auth) {
@@ -65,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await firebaseSignOut(auth);
       },
     }),
-    [isLoading, user],
+    [isLoading, isProfileLoading, profile, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

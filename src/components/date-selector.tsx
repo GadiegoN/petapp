@@ -7,14 +7,14 @@ type DateSelectorProps = {
 
 export function DateSelector({ value, onChange }: DateSelectorProps) {
   return (
-    <label className="relative flex h-11 w-full items-center rounded-lg border border-[#30313d] bg-[#171821] text-sm text-[#a1a1aa] shadow-sm sm:w-40">
-      <CalendarDays className="pointer-events-none absolute left-3 size-4 text-[#9b87ff]" />
+    <label className="relative flex h-11 w-full items-center rounded-lg border border-bd-muted bg-surface-5 text-sm text-muted shadow-sm sm:w-40">
+      <CalendarDays className="pointer-events-none absolute left-3 size-4 text-accent" />
       <input
         type="date"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label="Selecionar data"
-        className="h-full w-full rounded-lg bg-transparent pl-9 pr-3 text-[#a1a1aa] outline-none [color-scheme:dark]"
+        className="h-full w-full rounded-lg bg-transparent pl-9 pr-3 text-muted outline-none "
       />
     </label>
   );

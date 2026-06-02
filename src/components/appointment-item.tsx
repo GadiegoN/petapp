@@ -1,5 +1,6 @@
 import { Pencil, Trash2 } from "lucide-react";
 import type { Appointment } from "@/types/appointment";
+import { Button } from "@/components/ui/button";
 
 type AppointmentItemProps = {
   appointment: Appointment;
@@ -13,40 +14,42 @@ export function AppointmentItem({
   onRemove,
 }: AppointmentItemProps) {
   return (
-    <li className="grid gap-3 border-t border-[#30313d]/60 px-5 py-5 text-sm sm:grid-cols-[4rem_1fr_1fr_auto] sm:items-center sm:px-7">
+    <li className="grid gap-3 border-t border-bd-muted/60 px-5 py-5 text-sm sm:grid-cols-[4rem_1fr_1fr_auto] sm:items-center sm:px-7">
       <time className="text-sm font-bold text-white">{appointment.time}</time>
 
       <div className="min-w-0">
         <span className="font-bold text-white">{appointment.petName}</span>
-        <span className="ml-1 text-xs text-[#a1a1aa]">
+        <span className="ml-1 text-xs text-muted">
           / {appointment.tutorName}
         </span>
       </div>
 
-      <p className="min-w-0 text-xs leading-5 text-[#a1a1aa] sm:text-sm">
+      <p className="min-w-0 text-xs leading-5 text-muted sm:text-sm">
         {appointment.service}
       </p>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
+        <Button
           onClick={() => onEdit(appointment)}
-          className="inline-flex w-fit items-center gap-1.5 rounded-md text-xs text-[#71717a] transition hover:text-[#9b87ff] focus-visible:outline focus-visible:outline-offset-4 focus-visible:outline-[#9b87ff]"
+          variant="link"
+          size="sm"
+          className="h-auto w-fit px-0 text-placeholder"
           aria-label={`Editar agendamento de ${appointment.petName}`}
+          icon={<Pencil className="size-3.5 sm:hidden" />}
         >
-          <Pencil className="size-3.5 sm:hidden" />
           Editar
-        </button>
+        </Button>
 
-        <button
-          type="button"
+        <Button
           onClick={() => onRemove(appointment.id)}
-          className="inline-flex w-fit items-center gap-1.5 rounded-md text-xs text-[#71717a] transition hover:text-[#f87171] focus-visible:outline focus-visible:outline-offset-4 focus-visible:outline-[#9b87ff]"
+          variant="link"
+          size="sm"
+          className="h-auto w-fit px-0 text-placeholder hover:text-red-400"
           aria-label={`Remover agendamento de ${appointment.petName}`}
+          icon={<Trash2 className="size-3.5 sm:hidden" />}
         >
-          <Trash2 className="size-3.5 sm:hidden" />
           Remover
-        </button>
+        </Button>
       </div>
     </li>
   );
