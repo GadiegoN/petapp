@@ -1,4 +1,10 @@
-import type { Address, EntityStatus, GeoPointValue, TimestampFields, Visibility } from "./common";
+import type {
+  Address,
+  EntityStatus,
+  GeoPointValue,
+  TimestampFields,
+  Visibility,
+} from "./common";
 
 export type DogSex = "male" | "female" | "unknown";
 
@@ -42,7 +48,12 @@ export type StreetDogUpdateType =
   | "vaccination"
   | "neutering"
   | "status_change"
-  | "note";
+  | "note"
+  | "created"
+  | "edited"
+  | "approved"
+  | "rejected"
+  | "duplicated";
 
 export type StreetDogUpdate = {
   id: string;
@@ -88,7 +99,12 @@ export type SupportPointUpdateType =
   | "water_refill"
   | "stock_empty"
   | "maintenance"
-  | "note";
+  | "note"
+  | "created"
+  | "edited"
+  | "approved"
+  | "rejected"
+  | "duplicated";
 
 export type SupportPointUpdate = {
   id: string;

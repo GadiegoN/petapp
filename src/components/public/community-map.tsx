@@ -76,7 +76,7 @@ export function CommunityMap({
       center={center}
       zoom={13}
       scrollWheelZoom
-      className="h-[32rem] min-h-[26rem] w-full overflow-hidden rounded-lg border border-bd-muted"
+      className="h-128 min-h-104 w-full overflow-hidden rounded-lg border border-bd-muted"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'

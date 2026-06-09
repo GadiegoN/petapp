@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { recordSupportPointHistory } from "@/lib/community-history";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import {
@@ -34,6 +35,8 @@ type SupportPointRow = SupportPointSubmissionFormData & {
   id: string;
   approvalStatus: string;
   visibility: string;
+  rejectionReason?: string;
+  duplicateOfId?: string;
 };
 
 export default function SupportPointsPage() {
@@ -41,7 +44,9 @@ export default function SupportPointsPage() {
   const [points, setPoints] = useState<DuplicateSourceItem[]>([]);
   const [draftPoint, setDraftPoint] =
     useState<SupportPointSubmissionFormData | null>(null);
-  const [editingPoint, setEditingPoint] = useState<SupportPointRow | null>(null);
+  const [editingPoint, setEditingPoint] = useState<SupportPointRow | null>(
+    null,
+  );
   const [isPointsLoading, setIsPointsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -112,6 +117,9 @@ export default function SupportPointsPage() {
       return;
     }
 
+    const isApprovedEdit = editingPoint?.approvalStatus === "approved";
+    const isReviewReset = isApprovedEdit && profile?.role !== "admin";
+
     const payload = {
       name: data.name.trim(),
       type: data.type,
@@ -124,21 +132,48 @@ export default function SupportPointsPage() {
       responsibleContact: data.responsibleContact.trim(),
       organizationId: data.organizationId.trim(),
       notes: data.notes.trim(),
-      approvalStatus: editingPoint?.approvalStatus ?? "pending",
+      approvalStatus: editingPoint
+        ? isReviewReset
+          ? "pending"
+          : editingPoint.approvalStatus
+        : "pending",
       visibility: "public",
       updatedAt: serverTimestamp(),
+      ...(isReviewReset
+        ? {
+            reviewedByUserId: "",
+            reviewedAt: null,
+          }
+        : {}),
     };
 
     setIsSaving(true);
     try {
       if (editingPoint) {
         await updateDoc(doc(db, "supportPoints", editingPoint.id), payload);
+        await recordSupportPointHistory(db, {
+          supportPointId: editingPoint.id,
+          type: "edited",
+          description: isReviewReset
+            ? "Cadastro editado e enviado para revisao novamente."
+            : "Cadastro editado.",
+          createdByUserId: user.uid,
+          isPublic: false,
+        });
       } else {
-        await addDoc(collection(db, "supportPoints"), {
+        const newPointRef = await addDoc(collection(db, "supportPoints"), {
           ...payload,
           approvalStatus: "pending",
           createdByUserId: user.uid,
           createdAt: serverTimestamp(),
+        });
+
+        await recordSupportPointHistory(db, {
+          supportPointId: newPointRef.id,
+          type: "created",
+          description: "Cadastro criado.",
+          createdByUserId: user.uid,
+          isPublic: false,
         });
       }
       setEditingPoint(null);
@@ -235,8 +270,14 @@ export default function SupportPointsPage() {
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <AdminStatusBadge label={point.type} />
                       <AdminStatusBadge
-                        label={point.approvalStatus}
-                        tone={getApprovalTone(point.approvalStatus)}
+                        label={getApprovalLabel(
+                          point.approvalStatus,
+                          point.rejectionReason,
+                        )}
+                        tone={getApprovalTone(
+                          point.approvalStatus,
+                          point.rejectionReason,
+                        )}
                       />
                       {point.needsRestock ? (
                         <AdminStatusBadge label="Reposicao" tone="warning" />
@@ -286,7 +327,9 @@ export default function SupportPointsPage() {
   );
 }
 
-function supportPointRowFromSource(source: DuplicateSourceItem): SupportPointRow {
+function supportPointRowFromSource(
+  source: DuplicateSourceItem,
+): SupportPointRow {
   const data = source.data;
   const location = data.location;
 
@@ -311,8 +354,38 @@ function supportPointRowFromSource(source: DuplicateSourceItem): SupportPointRow
     organizationId: String(data.organizationId || ""),
     notes: String(data.notes || ""),
     approvalStatus: String(data.approvalStatus || "pending"),
+    rejectionReason: String(data.rejectionReason || ""),
+    duplicateOfId: String(data.duplicateOfId || ""),
     visibility: String(data.visibility || "public"),
   };
+}
+
+function getApprovalLabel(status: string, rejectionReason?: string) {
+  if (status === "pending") {
+    return "Pendente";
+  }
+
+  if (status === "approved") {
+    return "Aprovado";
+  }
+
+  if (status === "rejected") {
+    return rejectionReason === "duplicate" ? "Duplicado" : "Rejeitado";
+  }
+
+  return "Desconhecido";
+}
+
+function getApprovalTone(status: string, rejectionReason?: string) {
+  if (status === "approved") {
+    return "success";
+  }
+
+  if (status === "rejected") {
+    return rejectionReason === "duplicate" ? "danger" : "danger";
+  }
+
+  return "warning";
 }
 
 function supportPointRowToFormData(
@@ -353,16 +426,4 @@ function supportPointDraftToData(data: SupportPointSubmissionFormData) {
     notes: data.notes,
     approvalStatus: "pending",
   };
-}
-
-function getApprovalTone(status: string) {
-  if (status === "approved") {
-    return "success";
-  }
-
-  if (status === "rejected") {
-    return "danger";
-  }
-
-  return "warning";
 }

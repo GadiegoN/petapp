@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { recordStreetDogHistory } from "@/lib/community-history";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import {
@@ -34,6 +35,8 @@ type StreetDogRow = StreetDogSubmissionFormData & {
   id: string;
   approvalStatus: string;
   visibility: string;
+  rejectionReason?: string;
+  duplicateOfId?: string;
 };
 
 export default function StreetDogsPage() {
@@ -78,9 +81,7 @@ export default function StreetDogsPage() {
             profile?.role === "admin" || dog.data.createdByUserId === user?.uid,
         )
         .map((dog) => streetDogRowFromSource(dog))
-        .sort((first, second) =>
-          first.nickname.localeCompare(second.nickname),
-        ),
+        .sort((first, second) => first.nickname.localeCompare(second.nickname)),
     [dogs, profile?.role, user?.uid],
   );
 
@@ -110,6 +111,9 @@ export default function StreetDogsPage() {
     const longitude = Number(data.longitude);
     const hasLocation = Number.isFinite(latitude) && Number.isFinite(longitude);
 
+    const isApprovedEdit = editingDog?.approvalStatus === "approved";
+    const isReviewReset = isApprovedEdit && profile?.role !== "admin";
+
     const payload = {
       nickname: data.nickname.trim(),
       photoUrl: data.photoUrl.trim(),
@@ -124,22 +128,49 @@ export default function StreetDogsPage() {
       neutering: data.neutering,
       regionLabel: data.regionLabel.trim(),
       mainLocation: hasLocation ? { latitude, longitude } : null,
-      approvalStatus: editingDog?.approvalStatus ?? "pending",
+      approvalStatus: editingDog
+        ? isReviewReset
+          ? "pending"
+          : editingDog.approvalStatus
+        : "pending",
       visibility: "public",
       updatedAt: serverTimestamp(),
+      ...(isReviewReset
+        ? {
+            reviewedByUserId: "",
+            reviewedAt: null,
+          }
+        : {}),
     };
 
     setIsSaving(true);
     try {
       if (editingDog) {
         await updateDoc(doc(db, "streetDogs", editingDog.id), payload);
+        await recordStreetDogHistory(db, {
+          streetDogId: editingDog.id,
+          type: "edited",
+          description: isReviewReset
+            ? "Cadastro editado e enviado para revisao novamente."
+            : "Cadastro editado.",
+          createdByUserId: user.uid,
+          isPublic: false,
+        });
       } else {
-        await addDoc(collection(db, "streetDogs"), {
+        const newDogRef = await addDoc(collection(db, "streetDogs"), {
           ...payload,
           approvalStatus: "pending",
           createdByUserId: user.uid,
           approvedByUserId: "",
           createdAt: serverTimestamp(),
+        });
+
+        await recordStreetDogHistory(db, {
+          streetDogId: newDogRef.id,
+          type: "created",
+          description: "Cadastro criado.",
+          createdByUserId: user.uid,
+          isPublic: false,
         });
       }
       setEditingDog(null);
@@ -236,8 +267,14 @@ export default function StreetDogsPage() {
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <AdminStatusBadge label={dog.status} />
                       <AdminStatusBadge
-                        label={dog.approvalStatus}
-                        tone={getApprovalTone(dog.approvalStatus)}
+                        label={getApprovalLabel(
+                          dog.approvalStatus,
+                          dog.rejectionReason,
+                        )}
+                        tone={getApprovalTone(
+                          dog.approvalStatus,
+                          dog.rejectionReason,
+                        )}
                       />
                     </div>
                     <p className="truncate text-sm font-bold text-white">
@@ -309,11 +346,43 @@ function streetDogRowFromSource(source: DuplicateSourceItem): StreetDogRow {
         ? String(location.longitude)
         : "",
     approvalStatus: String(data.approvalStatus || "pending"),
+    rejectionReason: String(data.rejectionReason || ""),
+    duplicateOfId: String(data.duplicateOfId || ""),
     visibility: String(data.visibility || "public"),
   };
 }
 
-function streetDogRowToFormData(row: StreetDogRow): StreetDogSubmissionFormData {
+function getApprovalLabel(status: string, rejectionReason?: string) {
+  if (status === "pending") {
+    return "Pendente";
+  }
+
+  if (status === "approved") {
+    return "Aprovado";
+  }
+
+  if (status === "rejected") {
+    return rejectionReason === "duplicate" ? "Duplicado" : "Rejeitado";
+  }
+
+  return "Desconhecido";
+}
+
+function getApprovalTone(status: string, rejectionReason?: string) {
+  if (status === "approved") {
+    return "success";
+  }
+
+  if (status === "rejected") {
+    return rejectionReason === "duplicate" ? "danger" : "danger";
+  }
+
+  return "warning";
+}
+
+function streetDogRowToFormData(
+  row: StreetDogRow,
+): StreetDogSubmissionFormData {
   return {
     nickname: row.nickname,
     photoUrl: row.photoUrl,
@@ -353,16 +422,4 @@ function streetDogDraftToData(data: StreetDogSubmissionFormData) {
     mainLocation: hasLocation ? { latitude, longitude } : null,
     approvalStatus: "pending",
   };
-}
-
-function getApprovalTone(status: string) {
-  if (status === "approved") {
-    return "success";
-  }
-
-  if (status === "rejected") {
-    return "danger";
-  }
-
-  return "warning";
 }

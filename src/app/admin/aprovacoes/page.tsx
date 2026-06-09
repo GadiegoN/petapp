@@ -17,6 +17,10 @@ import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import {
+  recordStreetDogHistory,
+  recordSupportPointHistory,
+} from "@/lib/community-history";
+import {
   findStreetDogDuplicates,
   findSupportPointDuplicates,
   type DuplicateCandidate,
@@ -97,7 +101,11 @@ export default function AdminApprovalsPage() {
         subtitle: String(item.data.type || "Sem tipo"),
         statusField: "approvalStatus",
         data: item.data,
-        duplicates: findSupportPointDuplicates(item.id, item.data, supportPoints),
+        duplicates: findSupportPointDuplicates(
+          item.id,
+          item.data,
+          supportPoints,
+        ),
       }));
 
     const organizationItems: ApprovalItem[] = organizations
@@ -132,6 +140,27 @@ export default function AdminApprovalsPage() {
         rejectionReason: approved ? "" : "manual_rejection",
         duplicateOfId: "",
       });
+
+      if (item.collectionName === "streetDogs") {
+        await recordStreetDogHistory(db, {
+          streetDogId: item.id,
+          type: approved ? "approved" : "rejected",
+          description: approved ? "Cadastro aprovado." : "Cadastro rejeitado.",
+          createdByUserId: user.uid,
+          isPublic: approved,
+        });
+      }
+
+      if (item.collectionName === "supportPoints") {
+        await recordSupportPointHistory(db, {
+          supportPointId: item.id,
+          type: approved ? "approved" : "rejected",
+          description: approved ? "Cadastro aprovado." : "Cadastro rejeitado.",
+          createdByUserId: user.uid,
+          isPublic: approved,
+        });
+      }
+
       setError("");
     } catch {
       setError("Nao foi possivel atualizar a aprovacao.");
@@ -154,6 +183,27 @@ export default function AdminApprovalsPage() {
         rejectionReason: "duplicate",
         duplicateOfId: duplicateId,
       });
+
+      if (item.collectionName === "streetDogs") {
+        await recordStreetDogHistory(db, {
+          streetDogId: item.id,
+          type: "duplicated",
+          description: `Cadastro marcado como duplicado de ${duplicateId}.`,
+          createdByUserId: user.uid,
+          isPublic: false,
+        });
+      }
+
+      if (item.collectionName === "supportPoints") {
+        await recordSupportPointHistory(db, {
+          supportPointId: item.id,
+          type: "duplicated",
+          description: `Cadastro marcado como duplicado de ${duplicateId}.`,
+          createdByUserId: user.uid,
+          isPublic: false,
+        });
+      }
+
       setError("");
     } catch {
       setError("Nao foi possivel marcar como duplicado.");
