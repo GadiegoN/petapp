@@ -1,11 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { CalendarDays, Clock3, PawPrint, Phone, User, X } from "lucide-react";
+import { CalendarDays, Clock3, PawPrint, Phone, User } from "lucide-react";
 import type { Appointment, AppointmentFormData } from "@/types/appointment";
 import { Button } from "./ui/button";
 import { InputField } from "./ui/input-field";
+import { SelectField } from "./ui/select-field";
 import { TextareaField } from "./ui/textarea-field";
+import type { Tutor, DomesticPet } from "@/types/domain";
+import { Dialog } from "./ui/dialog";
 
 type AppointmentModalProps = {
   isOpen: boolean;
@@ -13,6 +16,8 @@ type AppointmentModalProps = {
   appointment?: Appointment | null;
   error: string;
   isSaving?: boolean;
+  tutors: Tutor[];
+  pets: DomesticPet[];
   onClose: () => void;
   onSubmit: (appointment: AppointmentFormData) => boolean | Promise<boolean>;
 };
@@ -24,6 +29,8 @@ const emptyForm = (selectedDate: string): AppointmentFormData => ({
   service: "",
   date: selectedDate,
   time: "12:00",
+  tutorId: "",
+  domesticPetId: "",
 });
 
 export function AppointmentModal({
@@ -32,6 +39,8 @@ export function AppointmentModal({
   appointment,
   error,
   isSaving = false,
+  tutors,
+  pets,
   onClose,
   onSubmit,
 }: AppointmentModalProps) {
@@ -50,6 +59,8 @@ export function AppointmentModal({
               service: appointment.service,
               date: appointment.date,
               time: appointment.time,
+              tutorId: appointment.tutorId || "",
+              domesticPetId: appointment.domesticPetId || "",
             }
           : emptyForm(selectedDate),
       );
@@ -64,6 +75,47 @@ export function AppointmentModal({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function handleTutorChange(tutorId: string) {
+    if (!tutorId) {
+      setForm(curr => ({
+        ...curr,
+        tutorId: "",
+        domesticPetId: "",
+      }));
+      return;
+    }
+
+    const selectedTutor = tutors.find(t => t.id === tutorId);
+    if (selectedTutor) {
+      setForm(curr => ({
+        ...curr,
+        tutorId,
+        tutorName: selectedTutor.name,
+        phone: selectedTutor.phone || "",
+        domesticPetId: "", // Clear pet when tutor changes
+      }));
+    }
+  }
+
+  function handlePetChange(petId: string) {
+    if (!petId) {
+      setForm(curr => ({
+        ...curr,
+        domesticPetId: "",
+      }));
+      return;
+    }
+
+    const selectedPet = pets.find(p => p.id === petId);
+    if (selectedPet) {
+      setForm(curr => ({
+        ...curr,
+        domesticPetId: petId,
+        petName: selectedPet.name,
+      }));
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -74,40 +126,47 @@ export function AppointmentModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-background/70 px-4 py-8 backdrop-blur-md"
-      onMouseDown={onClose}
-      role="presentation"
+    <Dialog
+      isOpen={isOpen}
+      title={appointment ? "Editar atendimento" : "Agende um atendimento"}
+      description="Preencha os dados do cliente para realizar o agendamento."
+      onClose={onClose}
     >
-      <form
-        onSubmit={handleSubmit}
-        onMouseDown={(event) => event.stopPropagation()}
-        className="relative w-full max-w-88 rounded-xl bg-surface-3 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.42)] sm:max-w-116 sm:p-8"
-      >
-        <Button
-          onClick={onClose}
-          aria-label="Fechar modal"
-          variant="ghost"
-          size="icon"
-          className="absolute right-4 top-4"
-          icon={<X className="size-5" />}
-        >
-        </Button>
-
-        <div className="mb-7 pr-8">
-          <h2 className="text-xl font-bold text-white">
-            {appointment ? "Editar atendimento" : "Agende um atendimento"}
-          </h2>
-          <p className="mt-2 text-sm leading-5 text-muted">
-            Preencha os dados do cliente para realizar o agendamento.
-          </p>
-        </div>
-
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-4">
+          {tutors.length > 0 && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SelectField
+                label="Tutor Cadastrado (Opcional)"
+                value={form.tutorId || ""}
+                onChange={(e) => handleTutorChange(e.target.value)}
+                options={[
+                  { value: "", label: "Digitar manualmente..." },
+                  ...tutors.map((t) => ({ value: t.id, label: t.name })),
+                ]}
+              />
+              <SelectField
+                label="Pet Cadastrado (Opcional)"
+                value={form.domesticPetId || ""}
+                onChange={(e) => handlePetChange(e.target.value)}
+                disabled={!form.tutorId}
+                options={[
+                  { value: "", label: form.tutorId ? "Digitar manualmente..." : "Selecione um tutor primeiro..." },
+                  ...pets
+                    .filter((p) => p.tutorId === form.tutorId)
+                    .map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
+            </div>
+          )}
+
           <InputField
             label="Nome do tutor"
             value={form.tutorName}
-            onChange={(event) => updateField("tutorName", event.target.value)}
+            onChange={(event) => {
+              updateField("tutorName", event.target.value);
+              if (form.tutorId) updateField("tutorId", "");
+            }}
             placeholder="Helena Souza"
             icon={<User className="size-4" />}
             required
@@ -115,7 +174,10 @@ export function AppointmentModal({
           <InputField
             label="Nome do pet"
             value={form.petName}
-            onChange={(event) => updateField("petName", event.target.value)}
+            onChange={(event) => {
+              updateField("petName", event.target.value);
+              if (form.domesticPetId) updateField("domesticPetId", "");
+            }}
             placeholder="Cheddar"
             icon={<PawPrint className="size-4" />}
             required
@@ -123,7 +185,10 @@ export function AppointmentModal({
           <InputField
             label="Telefone"
             value={form.phone}
-            onChange={(event) => updateField("phone", event.target.value)}
+            onChange={(event) => {
+              updateField("phone", event.target.value);
+              if (form.tutorId) updateField("tutorId", "");
+            }}
             placeholder="(00) 0 0000-0000"
             icon={<Phone className="size-4" />}
             required
@@ -173,6 +238,6 @@ export function AppointmentModal({
           </Button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }

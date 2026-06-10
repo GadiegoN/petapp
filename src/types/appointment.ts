@@ -33,4 +33,6 @@ export type AppointmentFormData = {
   service: string;
   date: string;
   time: string;
+  tutorId?: string;
+  domesticPetId?: string;
 };

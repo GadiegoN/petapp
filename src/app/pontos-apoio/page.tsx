@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   addDoc,
   collection,
@@ -291,6 +292,14 @@ export default function SupportPointsPage() {
                         point.commonHours ||
                         "Sem responsavel"}
                     </p>
+                    {point.approvalStatus === "approved" && (
+                      <Link
+                        href={`/pontos/${point.id}`}
+                        className="mt-1 inline-flex text-xs font-bold text-accent hover:text-accent-2 hover:underline transition"
+                      >
+                        Visualizar Página Pública →
+                      </Link>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <Button

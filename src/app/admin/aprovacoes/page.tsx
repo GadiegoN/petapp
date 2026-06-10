@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, CopyX, X } from "lucide-react";
 import {
+  arrayUnion,
   collection,
   doc,
   onSnapshot,
@@ -28,7 +29,7 @@ import {
 } from "@/lib/duplicates/community-duplicates";
 import { db } from "@/lib/firebase";
 
-type ApprovalCollection = "streetDogs" | "supportPoints" | "organizations";
+type ApprovalCollection = "streetDogs" | "supportPoints" | "organizations" | "roleRequests";
 
 type ApprovalItem = {
   id: string;
@@ -46,6 +47,7 @@ export default function AdminApprovalsPage() {
   const [streetDogs, setStreetDogs] = useState<DuplicateSourceItem[]>([]);
   const [supportPoints, setSupportPoints] = useState<DuplicateSourceItem[]>([]);
   const [organizations, setOrganizations] = useState<DuplicateSourceItem[]>([]);
+  const [roleRequests, setRoleRequests] = useState<DuplicateSourceItem[]>([]);
   const [savingId, setSavingId] = useState("");
   const [error, setError] = useState("");
 
@@ -67,6 +69,11 @@ export default function AdminApprovalsPage() {
       }),
       onSnapshot(query(collection(db, "organizations")), (snapshot) => {
         setOrganizations(
+          snapshot.docs.map((item) => ({ id: item.id, data: item.data() })),
+        );
+      }),
+      onSnapshot(query(collection(db, "roleRequests")), (snapshot) => {
+        setRoleRequests(
           snapshot.docs.map((item) => ({ id: item.id, data: item.data() })),
         );
       }),
@@ -121,10 +128,23 @@ export default function AdminApprovalsPage() {
         duplicates: [],
       }));
 
-    return [...dogItems, ...pointItems, ...organizationItems].sort(
+    const roleRequestItems: ApprovalItem[] = roleRequests
+      .filter((item) => item.data.status === "pending")
+      .map((item) => ({
+        id: item.id,
+        collectionName: "roleRequests",
+        typeLabel: "Solicitação de Acesso",
+        title: String(item.data.displayName || "Sem nome"),
+        subtitle: String(item.data.email || "Sem email"),
+        statusField: "status",
+        data: item.data,
+        duplicates: [],
+      }));
+
+    return [...dogItems, ...pointItems, ...organizationItems, ...roleRequestItems].sort(
       (first, second) => first.typeLabel.localeCompare(second.typeLabel),
     );
-  }, [organizations, streetDogs, supportPoints]);
+  }, [organizations, streetDogs, supportPoints, roleRequests]);
 
   async function handleDecision(item: ApprovalItem, approved: boolean) {
     if (!db || !user) {
@@ -159,6 +179,27 @@ export default function AdminApprovalsPage() {
           createdByUserId: user.uid,
           isPublic: approved,
         });
+      }
+
+      if (item.collectionName === "organizations" && approved) {
+        const ownerUserId = item.data.ownerUserId;
+        if (ownerUserId) {
+          await updateDoc(doc(db, "users", ownerUserId), {
+            role: "partner",
+            organizationIds: arrayUnion(item.id),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      if (item.collectionName === "roleRequests" && approved) {
+        const reqUserId = item.data.userId;
+        if (reqUserId) {
+          await updateDoc(doc(db, "users", reqUserId), {
+            role: "volunteer",
+            updatedAt: serverTimestamp(),
+          });
+        }
       }
 
       setError("");
@@ -252,6 +293,74 @@ export default function AdminApprovalsPage() {
                     <p className="truncate text-xs text-muted">
                       {item.subtitle}
                     </p>
+
+                    {/* Detalhes completos do cadastro pendente para moderação consciente */}
+                    <div className="mt-3 rounded-md border border-bd-muted bg-surface-3 p-3 text-xs leading-5 space-y-2 text-muted max-w-2xl">
+                      <p className="font-bold text-fg uppercase tracking-wider text-[0.7rem] border-b border-bd-muted pb-1 mb-1">
+                        Dados Enviados para Revisão:
+                      </p>
+                      {item.collectionName === "streetDogs" && (
+                        <div className="grid gap-2 sm:grid-cols-2 text-fg">
+                          <p><strong className="text-white">Apelido:</strong> {item.data.nickname || "Sem apelido"}</p>
+                          <p><strong className="text-white">Região:</strong> {item.data.regionLabel || "Não informada"}</p>
+                          <p><strong className="text-white">Sexo:</strong> {item.data.sex === "male" ? "Macho" : item.data.sex === "female" ? "Fêmea" : "Desconhecido"}</p>
+                          <p><strong className="text-white">Porte:</strong> {item.data.size === "small" ? "Pequeno" : item.data.size === "medium" ? "Médio" : item.data.size === "large" ? "Grande" : item.data.size === "giant" ? "Gigante" : "Desconhecido"}</p>
+                          <p><strong className="text-white">Raça aproximada:</strong> {item.data.approximateBreed || "SRD"}</p>
+                          <p><strong className="text-white">Cor predominante:</strong> {item.data.color || "Não informada"}</p>
+                          <p><strong className="text-white">Temperamento:</strong> {item.data.temperament || "Não informado"}</p>
+                          <p><strong className="text-white">Vacinação:</strong> {item.data.vaccination === "yes" ? "Vacinado" : item.data.vaccination === "no" ? "Não vacinado" : "Desconhecido"}</p>
+                          <p><strong className="text-white">Castrado:</strong> {item.data.neutering === "yes" ? "Sim" : item.data.neutering === "no" ? "Não" : "Desconhecido"}</p>
+                          {item.data.notes && <p className="col-span-2"><strong className="text-white">Observações:</strong> {item.data.notes}</p>}
+                          {item.data.photoUrl && (
+                            <div className="col-span-2 mt-2">
+                              <strong className="block text-white mb-1">Foto Enviada:</strong>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={item.data.photoUrl} alt="Foto do cão" className="max-h-40 rounded object-cover border border-bd-muted" />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {item.collectionName === "supportPoints" && (
+                        <div className="grid gap-2 sm:grid-cols-2 text-fg">
+                          <p><strong className="text-white">Nome do Ponto:</strong> {item.data.name || "Sem nome"}</p>
+                          <p><strong className="text-white">Tipo:</strong> {item.data.type === "donation_point" ? "Ponto de Doação" : item.data.type === "petshop" ? "Petshop Parceiro" : item.data.type === "commerce" ? "Comércio Solidário" : item.data.type === "ngo" ? "ONG / Protetora" : "Outro"}</p>
+                          <p><strong className="text-white">Ração disponível:</strong> {item.data.foodAvailable ? "Sim" : "Não"}</p>
+                          <p><strong className="text-white">Água disponível:</strong> {item.data.waterAvailable ? "Sim" : "Não"}</p>
+                          <p><strong className="text-white">Precisa de reposição:</strong> {item.data.needsRestock ? "Sim" : "Não"}</p>
+                          <p><strong className="text-white">Horário de funcionamento:</strong> {item.data.commonHours || "Não informado"}</p>
+                          <p><strong className="text-white">Responsável:</strong> {item.data.responsibleName || "Não informado"}</p>
+                          <p><strong className="text-white">Contato:</strong> {item.data.responsibleContact || "Não informado"}</p>
+                          {item.data.notes && <p className="col-span-2"><strong className="text-white">Observações:</strong> {item.data.notes}</p>}
+                        </div>
+                      )}
+                      {item.collectionName === "organizations" && (
+                        <div className="grid gap-2 sm:grid-cols-2 text-fg">
+                          <p><strong className="text-white">Nome da Organização:</strong> {item.data.name || "Sem nome"}</p>
+                          <p><strong className="text-white">Tipo:</strong> {item.data.type}</p>
+                          <p><strong className="text-white">Documento (CNPJ/CPF):</strong> {item.data.document || "Não informado"}</p>
+                          <p><strong className="text-white">E-mail:</strong> {item.data.email || "Não informado"}</p>
+                          <p><strong className="text-white">Telefone:</strong> {item.data.phone || "Não informado"}</p>
+                          <p><strong className="text-white">Parceiro Público:</strong> {item.data.isPublicPartner ? "Sim" : "Não"}</p>
+                          {item.data.address && (
+                            <p className="col-span-2"><strong className="text-white">Endereço:</strong> {item.data.address.street}, {item.data.address.number} - {item.data.address.district}, {item.data.address.city}/{item.data.address.state}</p>
+                          )}
+                          {item.data.notes && (
+                            <p className="col-span-2"><strong className="text-white">Nota:</strong> {item.data.notes}</p>
+                          )}
+                        </div>
+                      )}
+                      {item.collectionName === "roleRequests" && (
+                        <div className="grid gap-2 sm:grid-cols-2 text-fg">
+                          <p><strong className="text-white">Nome do Candidato:</strong> {item.data.displayName || "Não informado"}</p>
+                          <p><strong className="text-white">E-mail:</strong> {item.data.email || "Não informado"}</p>
+                          <p><strong className="text-white">Telefone:</strong> {item.data.phone || "Não informado"}</p>
+                          <p><strong className="text-white">Região de Atuação:</strong> {item.data.region || "Não informada"}</p>
+                          {item.data.motivation && (
+                            <p className="col-span-2"><strong className="text-white">Motivação:</strong> {item.data.motivation}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     {item.duplicates.length > 0 ? (
                       <DuplicateList

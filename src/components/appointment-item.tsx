@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Pencil, Trash2 } from "lucide-react";
 import type { Appointment } from "@/types/appointment";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,16 @@ export function AppointmentItem({
       <time className="text-sm font-bold text-white">{appointment.time}</time>
 
       <div className="min-w-0">
-        <span className="font-bold text-white">{appointment.petName}</span>
+        {appointment.domesticPetId ? (
+          <Link
+            href={`/pets/${appointment.domesticPetId}`}
+            className="font-bold text-accent hover:text-accent-2 hover:underline transition"
+          >
+            {appointment.petName}
+          </Link>
+        ) : (
+          <span className="font-bold text-white">{appointment.petName}</span>
+        )}
         <span className="ml-1 text-xs text-muted">
           / {appointment.tutorName}
         </span>

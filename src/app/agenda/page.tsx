@@ -8,6 +8,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  documentId,
   onSnapshot,
   query,
   serverTimestamp,
@@ -29,6 +30,7 @@ import type {
   AppointmentFormData,
   Period,
 } from "@/types/appointment";
+import type { DomesticPet, Organization, Tutor } from "@/types/domain";
 import { getPeriodByTime } from "@/utils/get-period-by-time";
 
 const periods: Array<{
@@ -74,6 +76,9 @@ function appointmentFromFirestore(id: string, data: DocumentData): Appointment {
   return {
     id,
     userId: String(data.userId ?? ""),
+    organizationId: data.organizationId ? String(data.organizationId) : undefined,
+    tutorId: data.tutorId ? String(data.tutorId) : undefined,
+    domesticPetId: data.domesticPetId ? String(data.domesticPetId) : undefined,
     date: String(data.date ?? ""),
     time: String(data.time ?? ""),
     petName: String(data.petName ?? ""),
@@ -88,6 +93,16 @@ export default function Home() {
   const router = useRouter();
   const { user, profile, isLoading, isProfileLoading, isConfigured } =
     useAuth();
+  
+  // Organizations and selection
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string>("");
+  const [isOrgsLoading, setIsOrgsLoading] = useState(true);
+
+  // Tutors and pets for normalized form
+  const [tutors, setTutors] = useState<Tutor[]>([]);
+  const [pets, setPets] = useState<DomesticPet[]>([]);
+
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [selectedDate, setSelectedDate] = useState(getTodayDateInputValue);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -103,6 +118,107 @@ export default function Home() {
     }
   }, [isLoading, router, user]);
 
+  // 1. Fetch relevant organizations based on user role
+  useEffect(() => {
+    if (!db || !user || !profile) {
+      return;
+    }
+
+    setIsOrgsLoading(true);
+    let orgsQuery;
+
+    if (profile.role === "admin") {
+      orgsQuery = query(collection(db, "organizations"));
+    } else if (
+      profile.role === "partner" &&
+      profile.organizationIds &&
+      profile.organizationIds.length > 0
+    ) {
+      orgsQuery = query(
+        collection(db, "organizations"),
+        where(documentId(), "in", profile.organizationIds)
+      );
+    } else {
+      setOrganizations([]);
+      setIsOrgsLoading(false);
+      return;
+    }
+
+    return onSnapshot(
+      orgsQuery,
+      (snapshot) => {
+        const list = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as Organization[];
+        setOrganizations(list);
+        
+        // Auto-select first organization if none selected
+        if (list.length > 0) {
+          setActiveOrgId((current) => current || list[0].id);
+        }
+        setIsOrgsLoading(false);
+      },
+      () => {
+        setError("Não foi possível carregar as organizações.");
+        setIsOrgsLoading(false);
+      }
+    );
+  }, [user, profile]);
+
+  // 2. Fetch tutors and domestic pets when active organization changes
+  useEffect(() => {
+    if (!db || !activeOrgId) {
+      setTutors([]);
+      setPets([]);
+      return;
+    }
+
+    const tutorsQuery = query(
+      collection(db, "tutors"),
+      where("organizationId", "==", activeOrgId)
+    );
+
+    const petsQuery = query(
+      collection(db, "domesticPets"),
+      where("organizationId", "==", activeOrgId)
+    );
+
+    const unsubscribeTutors = onSnapshot(
+      tutorsQuery,
+      (snapshot) => {
+        const list = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as Tutor[];
+        setTutors(list);
+      },
+      () => {
+        setError("Erro ao carregar tutores.");
+      }
+    );
+
+    const unsubscribePets = onSnapshot(
+      petsQuery,
+      (snapshot) => {
+        const list = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as DomesticPet[];
+        setPets(list);
+      },
+      () => {
+        setError("Erro ao carregar pets domésticos.");
+      }
+    );
+
+    return () => {
+      unsubscribeTutors();
+      unsubscribePets();
+    };
+  }, [activeOrgId]);
+
+  // 3. Load appointments based on organization or fallback to user uid
   useEffect(() => {
     if (!user || !db) {
       setAppointments([]);
@@ -112,10 +228,19 @@ export default function Home() {
 
     setIsAppointmentsLoading(true);
 
-    const appointmentsQuery = query(
-      collection(db, "appointments"),
-      where("userId", "==", user.uid),
-    );
+    let appointmentsQuery;
+    if (activeOrgId) {
+      appointmentsQuery = query(
+        collection(db, "appointments"),
+        where("organizationId", "==", activeOrgId)
+      );
+    } else {
+      // Fallback for legacy accounts without organization
+      appointmentsQuery = query(
+        collection(db, "appointments"),
+        where("userId", "==", user.uid)
+      );
+    }
 
     return onSnapshot(
       appointmentsQuery,
@@ -132,7 +257,7 @@ export default function Home() {
         setIsAppointmentsLoading(false);
       },
     );
-  }, [user]);
+  }, [user, activeOrgId]);
 
   const appointmentsByPeriod = useMemo(() => {
     const dayAppointments = appointments
@@ -165,6 +290,9 @@ export default function Home() {
 
     const payload = {
       userId: user.uid,
+      organizationId: activeOrgId || null,
+      tutorId: formData.tutorId || null,
+      domesticPetId: formData.domesticPetId || null,
       date: formData.date,
       time: formData.time,
       petName: formData.petName.trim(),
@@ -222,7 +350,7 @@ export default function Home() {
     setIsModalOpen(true);
   }
 
-  if (isLoading || !user) {
+  if (isLoading || isProfileLoading || !user) {
     return (
       <AppLayout>
         <main className="grid min-h-screen place-items-center px-4">
@@ -253,7 +381,7 @@ export default function Home() {
           isProfileLoading={isProfileLoading}
         />
 
-        <div className="mb-8 grid gap-5 sm:grid-cols-[1fr_auto] sm:items-start">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-normal text-white">
               Sua agenda
@@ -263,10 +391,37 @@ export default function Home() {
               hoje.
             </p>
           </div>
-          <DateSelector value={selectedDate} onChange={setSelectedDate} />
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Org Selector for admin or multi-org partners */}
+            {(profile?.role === "admin" || organizations.length > 1) && (
+              <label className="block min-w-48 text-left">
+                <span className="mb-1 block text-[0.65rem] font-bold uppercase text-muted">
+                  Organização
+                </span>
+                <select
+                  value={activeOrgId}
+                  onChange={(e) => setActiveOrgId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-bd-muted bg-surface-3 px-2 text-xs text-white outline-none focus:border-accent"
+                >
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <DateSelector value={selectedDate} onChange={setSelectedDate} />
+          </div>
         </div>
 
-        {isAppointmentsLoading ? (
+        {!isOrgsLoading && organizations.length === 0 ? (
+          <div className="rounded-lg border border-warning-border bg-warning-bg/40 p-5 text-sm text-warning">
+            Para gerenciar a agenda, você precisa primeiro estar associado a uma Organização aprovada.
+          </div>
+        ) : isAppointmentsLoading ? (
           <p className="rounded-lg bg-surface-3 px-5 py-6 text-sm text-muted">
             Carregando agendamentos...
           </p>
@@ -289,18 +444,22 @@ export default function Home() {
         )}
       </main>
 
-      <NewAppointmentButton
-        onClick={() => {
-          setError("");
-          setEditingAppointment(null);
-          setIsModalOpen(true);
-        }}
-      />
+      {!isOrgsLoading && organizations.length > 0 && (
+        <NewAppointmentButton
+          onClick={() => {
+            setError("");
+            setEditingAppointment(null);
+            setIsModalOpen(true);
+          }}
+        />
+      )}
 
       <AppointmentModal
         isOpen={isModalOpen}
         selectedDate={selectedDate}
         appointment={editingAppointment}
+        tutors={tutors}
+        pets={pets}
         error={error}
         isSaving={isSaving}
         onClose={() => {

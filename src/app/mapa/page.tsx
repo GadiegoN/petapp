@@ -7,8 +7,10 @@ import { PublicPageShell } from "@/components/public/public-page-shell";
 import {
   publicMapDogFromFirestore,
   publicSupportPointFromFirestore,
+  publicMapPartnerFromFirestore,
   type PublicMapDog,
   type PublicMapSupportPoint,
+  type PublicMapPartner,
 } from "@/lib/firebase/community-mappers";
 import { db } from "@/lib/firebase";
 
@@ -32,6 +34,7 @@ export default function PublicMapPage() {
   const [supportPoints, setSupportPoints] = useState<PublicMapSupportPoint[]>(
     [],
   );
+  const [partners, setPartners] = useState<PublicMapPartner[]>([]);
   const [showDogs, setShowDogs] = useState(true);
   const [showFood, setShowFood] = useState(true);
   const [showWater, setShowWater] = useState(true);
@@ -53,6 +56,11 @@ export default function PublicMapPage() {
       where("visibility", "==", "public"),
       where("approvalStatus", "==", "approved"),
     );
+    const partnersQuery = query(
+      collection(db, "organizations"),
+      where("isPublicPartner", "==", true),
+      where("status", "==", "approved"),
+    );
 
     const unsubscribeDogs = onSnapshot(dogsQuery, (snapshot) => {
       setDogs(
@@ -70,9 +78,18 @@ export default function PublicMapPage() {
       );
     });
 
+    const unsubscribePartners = onSnapshot(partnersQuery, (snapshot) => {
+      setPartners(
+        snapshot.docs
+          .map((item) => publicMapPartnerFromFirestore(item.id, item.data()))
+          .filter((item): item is PublicMapPartner => Boolean(item)),
+      );
+    });
+
     return () => {
       unsubscribeDogs();
       unsubscribePoints();
+      unsubscribePartners();
     };
   }, []);
 
@@ -100,6 +117,7 @@ export default function PublicMapPage() {
       <CommunityMap
         dogs={dogs}
         supportPoints={supportPoints}
+        partners={partners}
         showDogs={showDogs}
         showFood={showFood}
         showWater={showWater}

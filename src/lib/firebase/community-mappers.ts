@@ -21,6 +21,25 @@ export type PublicMapSupportPoint = {
   longitude: number;
 };
 
+export type PublicMapPartner = {
+  id: string;
+  name: string;
+  type: string;
+  phone: string;
+  email: string;
+  address?: {
+    street?: string;
+    number?: string;
+    district?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    complement?: string;
+  };
+  latitude: number;
+  longitude: number;
+};
+
 export type PublicStreetDogProfile = {
   id: string;
   nickname: string;
@@ -105,6 +124,36 @@ export function publicSupportPointFromFirestore(
     foodAvailable: data.foodAvailable === true,
     waterAvailable: data.waterAvailable === true,
     needsRestock: data.needsRestock === true,
+    latitude: location.latitude,
+    longitude: location.longitude,
+  };
+}
+
+export function publicMapPartnerFromFirestore(
+  id: string,
+  data: DocumentData,
+): PublicMapPartner | null {
+  const location = data.location;
+
+  if (!isLocation(location)) {
+    return null;
+  }
+
+  return {
+    id,
+    name: String(data.name || "Parceiro"),
+    type: String(data.type || "petshop"),
+    phone: String(data.phone || ""),
+    email: String(data.email || ""),
+    address: data.address ? {
+      street: data.address.street ? String(data.address.street) : undefined,
+      number: data.address.number ? String(data.address.number) : undefined,
+      district: data.address.district ? String(data.address.district) : undefined,
+      city: data.address.city ? String(data.address.city) : undefined,
+      state: data.address.state ? String(data.address.state) : undefined,
+      postalCode: data.address.postalCode ? String(data.address.postalCode) : undefined,
+      complement: data.address.complement ? String(data.address.complement) : undefined,
+    } : undefined,
     latitude: location.latitude,
     longitude: location.longitude,
   };

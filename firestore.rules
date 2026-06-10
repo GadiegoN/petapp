@@ -82,9 +82,10 @@ service cloud.firestore {
     match /organizations/{organizationId} {
       allow read: if isAdmin()
         || belongsToOrganization(organizationId)
+        || (isSignedIn() && resource.data.ownerUserId == request.auth.uid)
         || (resource.data.isPublicPartner == true && resource.data.status == "approved");
 
-      allow create: if isActiveUser()
+      allow create: if isSignedIn()
         && request.resource.data.ownerUserId == request.auth.uid
         && request.resource.data.status == "pending";
 
@@ -320,6 +321,25 @@ service cloud.firestore {
         && request.resource.data.createdByUserId == request.auth.uid;
 
       allow update, delete: if isAdmin();
+    }
+
+    match /roleRequests/{requestId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == "pending";
+
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.userId == resource.data.userId
+        );
+
+      allow delete: if isAdmin();
     }
 
     match /{document=**} {

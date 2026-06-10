@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   addDoc,
   collection,
@@ -283,6 +284,14 @@ export default function StreetDogsPage() {
                     <p className="truncate text-xs text-muted">
                       {dog.regionLabel || dog.color || "Sem regiao informada"}
                     </p>
+                    {dog.approvalStatus === "approved" && (
+                      <Link
+                        href={`/caes/${dog.id}`}
+                        className="mt-1 inline-flex text-xs font-bold text-accent hover:text-accent-2 hover:underline transition"
+                      >
+                        Visualizar Página Pública →
+                      </Link>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <Button
