@@ -205,9 +205,17 @@ export function RoleNavigation() {
         const canAccess = can(isAuthenticated ? role : "public", item.permission);
         return canAccess ? item : null;
       } else {
-        const visibleSubItems = item.items.filter((sub) =>
-          can(isAuthenticated ? role : "public", sub.permission)
-        );
+        const visibleSubItems = item.items.filter((sub) => {
+          if (sub.href === "/organizacao/perfil") {
+            return (
+              isAuthenticated &&
+              (role === "admin" ||
+                role === "partner" ||
+                (profile && profile.organizationIds && profile.organizationIds.length > 0))
+            );
+          }
+          return can(isAuthenticated ? role : "public", sub.permission);
+        });
         return visibleSubItems.length > 0
           ? { ...item, items: visibleSubItems }
           : null;

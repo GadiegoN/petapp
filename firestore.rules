@@ -43,13 +43,12 @@ service cloud.firestore {
 
     function belongsToOrganization(organizationId) {
       return isActiveUser() && (
-        organizationId in organizationIds()
-        || (
-          exists(/databases/$(database)/documents/organizations/$(organizationId))
-          && (
-            get(/databases/$(database)/documents/organizations/$(organizationId)).data.ownerUserId == request.auth.uid
-            || request.auth.uid in get(/databases/$(database)/documents/organizations/$(organizationId)).data.memberUserIds
-          )
+        exists(/databases/$(database)/documents/organizations/$(organizationId))
+        && get(/databases/$(database)/documents/organizations/$(organizationId)).data.status == "approved"
+        && (
+          organizationId in organizationIds()
+          || get(/databases/$(database)/documents/organizations/$(organizationId)).data.ownerUserId == request.auth.uid
+          || request.auth.uid in get(/databases/$(database)/documents/organizations/$(organizationId)).data.memberUserIds
         )
       );
     }
@@ -138,8 +137,7 @@ service cloud.firestore {
 
       allow update: if isAdmin()
         || (
-          isPartner()
-          && isActiveUser()
+          isActiveUser()
           && resource.data.ownerUserId == request.auth.uid
           && request.resource.data.status == resource.data.status
           && request.resource.data.ownerUserId == resource.data.ownerUserId

@@ -8,7 +8,7 @@ export type OrganizationType =
   | "community_group"
   | "public_agency";
 
-export type OrganizationStatus = "pending" | "approved" | "suspended";
+export type OrganizationStatus = "pending" | "approved" | "suspended" | "rejected";
 
 export type Organization = TimestampFields & {
   id: string;

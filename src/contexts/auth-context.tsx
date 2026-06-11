@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -28,7 +29,7 @@ import {
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import { profileFromFirestore } from "@/lib/firebase/profile-mapper";
-import type { AuthenticatedProfile } from "@/types/domain";
+import type { AuthenticatedProfile, Organization, UserRole } from "@/types/domain";
 
 type AuthContextValue = {
   user: User | null;
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<AuthenticatedProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const dbRoleRef = useRef<UserRole>("public");
 
   useEffect(() => {
     if (!isFirebaseConfigured || !auth) {
@@ -92,6 +94,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const data = snapshot.data();
+        if (data) {
+          dbRoleRef.current = (data.role as UserRole) || "public";
+        }
         if (data && data.isActive === false) {
           updateDoc(userRef, {
             isActive: true,
@@ -124,21 +129,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     return onSnapshot(orgsQuery, (snapshot) => {
-      const orgIds = snapshot.docs.map((doc) => doc.id);
+      const orgs = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Organization[];
+
+      // Filter out rejected organizations entirely
+      const activeOrgs = orgs.filter((org) => org.status !== "rejected");
+
+      const approvedOrgIds = activeOrgs.filter((org) => org.status === "approved").map((org) => org.id);
+      const allActiveOrgIds = activeOrgs.map((org) => org.id);
       
       // Update local context profile state
       setProfile((prev) => {
         if (!prev) return null;
-        const newRole = prev.role === "admin" ? "admin" : (orgIds.length > 0 ? "partner" : prev.role);
+        const dbRole = dbRoleRef.current;
+        const newRole = dbRole === "admin" ? "admin" : (approvedOrgIds.length > 0 ? "partner" : (dbRole === "partner" ? "public" : dbRole));
         if (
-          JSON.stringify(prev.organizationIds) === JSON.stringify(orgIds) &&
+          JSON.stringify(prev.organizationIds) === JSON.stringify(allActiveOrgIds) &&
           prev.role === newRole
         ) {
           return prev;
         }
         return {
           ...prev,
-          organizationIds: orgIds,
+          organizationIds: allActiveOrgIds,
           role: newRole,
         };
       });
@@ -147,11 +162,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!db) return;
       const userDocOrgs = profile.organizationIds || [];
       const hasOrgsChanged =
-        JSON.stringify([...userDocOrgs].sort()) !== JSON.stringify([...orgIds].sort());
+        JSON.stringify([...userDocOrgs].sort()) !== JSON.stringify([...allActiveOrgIds].sort());
 
       if (hasOrgsChanged) {
         updateDoc(doc(db, "users", user.uid), {
-          organizationIds: orgIds,
+          organizationIds: allActiveOrgIds,
         }).catch((err) => {
           console.error("Erro ao sincronizar organizationIds no documento do usuario:", err);
         });

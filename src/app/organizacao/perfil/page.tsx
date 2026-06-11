@@ -70,6 +70,10 @@ export default function OrgProfilePage() {
   const isOwnerOrAdmin =
     profile?.role === "admin" || (activeOrg && activeOrg.ownerUserId === user?.uid);
 
+  const hasOrgAccess =
+    can(profile?.role, "manage_organization") ||
+    (profile && profile.organizationIds && profile.organizationIds.length > 0);
+
   // Members Management Fields
   const [memberEmail, setMemberEmail] = useState("");
   const [isAddingMember, setIsAddingMember] = useState(false);
@@ -358,7 +362,7 @@ export default function OrgProfilePage() {
   // Handle saving profile changes
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!db || !activeOrgId || !can(profile?.role, "manage_organization")) return;
+    if (!db || !activeOrgId || !hasOrgAccess) return;
 
     if (!name.trim()) {
       toast.error("O nome da organização é obrigatório.");
@@ -408,7 +412,7 @@ export default function OrgProfilePage() {
     );
   }
 
-  if (!can(profile?.role, "manage_organization")) {
+  if (!hasOrgAccess) {
     return (
       <AppLayout showNavigation>
         <main className="mx-auto grid min-h-[50vh] w-full max-w-140 place-items-center px-4">

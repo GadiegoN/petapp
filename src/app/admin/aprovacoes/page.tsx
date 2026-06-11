@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, CopyX, X } from "lucide-react";
 import {
+  arrayRemove,
   arrayUnion,
   collection,
   doc,
@@ -181,14 +182,22 @@ export default function AdminApprovalsPage() {
         });
       }
 
-      if (item.collectionName === "organizations" && approved) {
+      if (item.collectionName === "organizations") {
         const ownerUserId = item.data.ownerUserId;
         if (ownerUserId) {
-          await updateDoc(doc(db, "users", ownerUserId), {
-            role: "partner",
-            organizationIds: arrayUnion(item.id),
-            updatedAt: serverTimestamp(),
-          });
+          if (approved) {
+            await updateDoc(doc(db, "users", ownerUserId), {
+              role: "partner",
+              organizationIds: arrayUnion(item.id),
+              updatedAt: serverTimestamp(),
+            });
+          } else {
+            await updateDoc(doc(db, "users", ownerUserId), {
+              role: "public",
+              organizationIds: arrayRemove(item.id),
+              updatedAt: serverTimestamp(),
+            });
+          }
         }
       }
 
