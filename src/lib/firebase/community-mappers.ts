@@ -139,6 +139,11 @@ export function publicMapPartnerFromFirestore(
     return null;
   }
 
+  // Apenas organizações com plano Pro ativo podem ser exibidas no mapa público
+  if (data.plan !== "pro") {
+    return null;
+  }
+
   return {
     id,
     name: String(data.name || "Parceiro"),

@@ -42,7 +42,16 @@ service cloud.firestore {
     }
 
     function belongsToOrganization(organizationId) {
-      return isActiveUser() && organizationId in organizationIds();
+      return isActiveUser() && (
+        organizationId in organizationIds()
+        || (
+          exists(/databases/$(database)/documents/organizations/$(organizationId))
+          && (
+            get(/databases/$(database)/documents/organizations/$(organizationId)).data.ownerUserId == request.auth.uid
+            || request.auth.uid in get(/databases/$(database)/documents/organizations/$(organizationId)).data.memberUserIds
+          )
+        )
+      );
     }
 
     function isApprovedPublicResource() {
@@ -60,7 +69,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow read: if isAdmin() || isSignedIn();
 
       allow create: if isSignedIn()
         && request.auth.uid == userId
@@ -72,8 +81,43 @@ service cloud.firestore {
           isSignedIn()
           && request.auth.uid == userId
           && request.resource.data.role == resource.data.role
-          && request.resource.data.organizationIds == resource.data.organizationIds
-          && request.resource.data.isActive == resource.data.isActive
+          && (request.resource.data.isActive == resource.data.isActive || request.resource.data.isActive == true)
+          && (
+            request.resource.data.organizationIds == resource.data.organizationIds
+            || (
+              request.resource.data.organizationIds.size() <= 3
+              && (
+                request.resource.data.organizationIds.size() == 0
+                || (
+                  exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationIds[0]))
+                  && (
+                    get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationIds[0])).data.ownerUserId == request.auth.uid
+                    || request.auth.uid in get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationIds[0])).data.memberUserIds
+                  )
+                )
+              )
+              && (
+                request.resource.data.organizationIds.size() <= 1
+                || (
+                  exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationIds[1]))
+                  && (
+                    get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationIds[1])).data.ownerUserId == request.auth.uid
+                    || request.auth.uid in get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationIds[1])).data.memberUserIds
+                  )
+                )
+              )
+              && (
+                request.resource.data.organizationIds.size() <= 2
+                || (
+                  exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationIds[2]))
+                  && (
+                    get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationIds[2])).data.ownerUserId == request.auth.uid
+                    || request.auth.uid in get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationIds[2])).data.memberUserIds
+                  )
+                )
+              )
+            )
+          )
         );
 
       allow delete: if isAdmin();
@@ -81,20 +125,25 @@ service cloud.firestore {
 
     match /organizations/{organizationId} {
       allow read: if isAdmin()
-        || belongsToOrganization(organizationId)
-        || (isSignedIn() && resource.data.ownerUserId == request.auth.uid)
+        || (isSignedIn() && (
+          resource.data.ownerUserId == request.auth.uid
+          || request.auth.uid in resource.data.memberUserIds
+        ))
         || (resource.data.isPublicPartner == true && resource.data.status == "approved");
 
       allow create: if isSignedIn()
         && request.resource.data.ownerUserId == request.auth.uid
-        && request.resource.data.status == "pending";
+        && request.resource.data.status == "pending"
+        && (!('plan' in request.resource.data) || request.resource.data.plan == "free");
 
       allow update: if isAdmin()
         || (
           isPartner()
-          && belongsToOrganization(organizationId)
+          && isActiveUser()
+          && resource.data.ownerUserId == request.auth.uid
           && request.resource.data.status == resource.data.status
           && request.resource.data.ownerUserId == resource.data.ownerUserId
+          && (!('plan' in request.resource.data) || request.resource.data.plan == resource.data.plan)
         );
 
       allow delete: if isAdmin();

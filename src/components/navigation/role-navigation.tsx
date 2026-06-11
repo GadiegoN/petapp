@@ -14,6 +14,7 @@ import {
   PawPrint,
   ShieldCheck,
   Store,
+  User,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -285,14 +286,26 @@ export function RoleNavigation() {
           </nav>
 
           {isAuthenticated ? (
-            <Button
-              onClick={() => void handleSignOut()}
-              variant="ghost"
-              size="md"
-              icon={<LogOut className="size-4" strokeWidth={2.2} />}
-            >
-              Sair
-            </Button>
+            <>
+              <Link
+                href="/perfil"
+                className={buttonClassName({
+                  variant: pathname === "/perfil" ? "link" : "ghost",
+                  size: "md",
+                }) + " flex items-center gap-1.5"}
+              >
+                <User className="size-4" strokeWidth={2.2} />
+                <span>Meu Perfil</span>
+              </Link>
+              <Button
+                onClick={() => void handleSignOut()}
+                variant="ghost"
+                size="md"
+                icon={<LogOut className="size-4" strokeWidth={2.2} />}
+              >
+                Sair
+              </Button>
+            </>
           ) : (
             <Link
               href="/login"

@@ -21,8 +21,14 @@ export type Organization = TimestampFields & {
   location?: GeoPointValue;
   ownerUserId: string;
   memberUserIds: string[];
+  members?: {
+    uid: string;
+    displayName: string;
+    email: string;
+  }[];
   isPublicPartner: boolean;
   status: OrganizationStatus;
+  plan?: "free" | "pro";
 };
 
 export type Tutor = TimestampFields & {

@@ -22,6 +22,7 @@ import { Button, buttonClassName } from "@/components/ui/button";
 import { InputField } from "@/components/ui/input-field";
 import { SelectField } from "@/components/ui/select-field";
 import { Dialog } from "@/components/ui/dialog";
+import { UpgradeDialog } from "@/components/commercial/upgrade-dialog";
 import {
   DomesticPetForm,
   type DomesticPetSubmissionFormData,
@@ -55,6 +56,10 @@ export default function PetsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const activeOrg = organizations.find((o) => o.id === activeOrgId);
+  const isFreePlan = !activeOrg?.plan || activeOrg.plan === "free";
 
   // 1. Fetch relevant organizations based on user role
   useEffect(() => {
@@ -531,6 +536,10 @@ export default function PetsPage() {
           <div className="fixed inset-x-0 bottom-6 z-20 flex justify-center px-4 sm:inset-x-auto sm:right-7 sm:justify-end">
             <Button
               onClick={() => {
+                if (isFreePlan && pets.length >= 5) {
+                  setIsUpgradeModalOpen(true);
+                  return;
+                }
                 setEditingPet(null);
                 setIsModalOpen(true);
                 setError("");
@@ -543,6 +552,17 @@ export default function PetsPage() {
               Novo Pet
             </Button>
           </div>
+        )}
+
+        {activeOrg && (
+          <UpgradeDialog
+            isOpen={isUpgradeModalOpen}
+            onClose={() => setIsUpgradeModalOpen(false)}
+            orgId={activeOrg.id}
+            orgName={activeOrg.name}
+            resourceName="pets"
+            limit={5}
+          />
         )}
       </main>
     </AppLayout>

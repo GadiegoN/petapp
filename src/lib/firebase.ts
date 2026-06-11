@@ -19,6 +19,6 @@ export const auth: Auth | null =
     : null;
 
 export const db: Firestore | null =
-  isFirebaseConfigured && typeof window !== "undefined"
+  isFirebaseConfigured
     ? getFirestore(getApps().length ? getApp() : initializeApp(firebaseConfig))
     : null;

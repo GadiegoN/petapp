@@ -9,6 +9,7 @@ type LocationSelectorMapProps = {
   latitude: number;
   longitude: number;
   onChange: (lat: number, lng: number) => void;
+  readonly?: boolean;
 };
 
 const pulseIcon = L.divIcon({
@@ -28,10 +29,12 @@ function ChangeMapView({ center }: { center: [number, number] }) {
 }
 
 // Click on map event handler
-function MapClickHandler({ onClick }: { onClick: (lat: number, lng: number) => void }) {
+function MapClickHandler({ onClick, readonly }: { onClick: (lat: number, lng: number) => void; readonly?: boolean }) {
   useMapEvents({
     click(event) {
-      onClick(event.latlng.lat, event.latlng.lng);
+      if (!readonly) {
+        onClick(event.latlng.lat, event.latlng.lng);
+      }
     },
   });
   return null;
@@ -41,6 +44,7 @@ export function LocationSelectorMap({
   latitude,
   longitude,
   onChange,
+  readonly,
 }: LocationSelectorMapProps) {
   const position: [number, number] = [latitude, longitude];
 
@@ -57,13 +61,13 @@ export function LocationSelectorMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        <MapClickHandler onClick={onChange} />
+        <MapClickHandler onClick={onChange} readonly={readonly} />
         <ChangeMapView center={position} />
 
         <Marker
           position={position}
           icon={pulseIcon}
-          draggable
+          draggable={!readonly}
           eventHandlers={{
             dragend(event) {
               const marker = event.target;
@@ -75,9 +79,11 @@ export function LocationSelectorMap({
           }}
         />
       </MapContainer>
-      <div className="pointer-events-none absolute bottom-2 left-2 z-[400] rounded bg-background/80 px-2 py-1 text-[0.65rem] text-muted border border-bd-muted backdrop-blur-sm">
-        Clique no mapa ou arraste o marcador para selecionar
-      </div>
+      {!readonly && (
+        <div className="pointer-events-none absolute bottom-2 left-2 z-[400] rounded bg-background/80 px-2 py-1 text-[0.65rem] text-muted border border-bd-muted backdrop-blur-sm">
+          Clique no mapa ou arraste o marcador para selecionar
+        </div>
+      )}
     </div>
   );
 }

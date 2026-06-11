@@ -16,10 +16,15 @@ import {
   type User,
 } from "firebase/auth";
 import {
+  collection,
   doc,
   onSnapshot,
+  or,
+  query,
   serverTimestamp,
   setDoc,
+  updateDoc,
+  where,
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import { profileFromFirestore } from "@/lib/firebase/profile-mapper";
@@ -86,6 +91,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        const data = snapshot.data();
+        if (data && data.isActive === false) {
+          updateDoc(userRef, {
+            isActive: true,
+            updatedAt: serverTimestamp(),
+          }).catch((err) => {
+            console.error("Erro ao auto-ativar usuario:", err);
+          });
+        }
+
         setProfile(profileFromFirestore(snapshot.id, snapshot.data()));
         setIsProfileLoading(false);
       },
@@ -95,6 +110,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     );
   }, [user]);
+
+  // Listen to organizations where user is owner or listed as a member in real time
+  useEffect(() => {
+    if (!user || !db || !profile) return;
+
+    const orgsQuery = query(
+      collection(db, "organizations"),
+      or(
+        where("ownerUserId", "==", user.uid),
+        where("memberUserIds", "array-contains", user.uid)
+      )
+    );
+
+    return onSnapshot(orgsQuery, (snapshot) => {
+      const orgIds = snapshot.docs.map((doc) => doc.id);
+      
+      // Update local context profile state
+      setProfile((prev) => {
+        if (!prev) return null;
+        const newRole = prev.role === "admin" ? "admin" : (orgIds.length > 0 ? "partner" : prev.role);
+        if (
+          JSON.stringify(prev.organizationIds) === JSON.stringify(orgIds) &&
+          prev.role === newRole
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          organizationIds: orgIds,
+          role: newRole,
+        };
+      });
+
+      // Synchronize changes to the user's document in Firestore database
+      if (!db) return;
+      const userDocOrgs = profile.organizationIds || [];
+      const hasOrgsChanged =
+        JSON.stringify([...userDocOrgs].sort()) !== JSON.stringify([...orgIds].sort());
+
+      if (hasOrgsChanged) {
+        updateDoc(doc(db, "users", user.uid), {
+          organizationIds: orgIds,
+        }).catch((err) => {
+          console.error("Erro ao sincronizar organizationIds no documento do usuario:", err);
+        });
+      }
+    });
+  }, [user, profile]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

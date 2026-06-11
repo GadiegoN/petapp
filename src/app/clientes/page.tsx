@@ -20,6 +20,7 @@ import { UserSummary } from "@/components/auth/user-summary";
 import { Button } from "@/components/ui/button";
 import { InputField } from "@/components/ui/input-field";
 import { Dialog } from "@/components/ui/dialog";
+import { UpgradeDialog } from "@/components/commercial/upgrade-dialog";
 import {
   TutorForm,
   type TutorSubmissionFormData,
@@ -47,6 +48,10 @@ export default function ClientsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const activeOrg = organizations.find((o) => o.id === activeOrgId);
+  const isFreePlan = !activeOrg?.plan || activeOrg.plan === "free";
 
   // 1. Fetch relevant organizations based on user role
   useEffect(() => {
@@ -402,6 +407,10 @@ export default function ClientsPage() {
           <div className="fixed inset-x-0 bottom-6 z-20 flex justify-center px-4 sm:inset-x-auto sm:right-7 sm:justify-end">
             <Button
               onClick={() => {
+                if (isFreePlan && tutors.length >= 5) {
+                  setIsUpgradeModalOpen(true);
+                  return;
+                }
                 setEditingTutor(null);
                 setIsModalOpen(true);
                 setError("");
@@ -414,6 +423,17 @@ export default function ClientsPage() {
               Novo Cliente
             </Button>
           </div>
+        )}
+
+        {activeOrg && (
+          <UpgradeDialog
+            isOpen={isUpgradeModalOpen}
+            onClose={() => setIsUpgradeModalOpen(false)}
+            orgId={activeOrg.id}
+            orgName={activeOrg.name}
+            resourceName="clientes"
+            limit={5}
+          />
         )}
       </main>
     </AppLayout>

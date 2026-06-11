@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { AppLayout } from "@/components/app-layout";
 import { AppointmentModal } from "@/components/appointment-modal";
+import { UpgradeDialog } from "@/components/commercial/upgrade-dialog";
 import { UserSummary } from "@/components/auth/user-summary";
 import { DateSelector } from "@/components/date-selector";
 import { NewAppointmentButton } from "@/components/new-appointment-button";
@@ -111,6 +112,10 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [isAppointmentsLoading, setIsAppointmentsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const activeOrg = organizations.find((o) => o.id === activeOrgId);
+  const isFreePlan = !activeOrg?.plan || activeOrg.plan === "free";
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -447,6 +452,10 @@ export default function Home() {
       {!isOrgsLoading && organizations.length > 0 && (
         <NewAppointmentButton
           onClick={() => {
+            if (isFreePlan && appointments.length >= 10) {
+              setIsUpgradeModalOpen(true);
+              return;
+            }
             setError("");
             setEditingAppointment(null);
             setIsModalOpen(true);
@@ -469,6 +478,17 @@ export default function Home() {
         }}
         onSubmit={handleSaveAppointment}
       />
+
+      {activeOrg && (
+        <UpgradeDialog
+          isOpen={isUpgradeModalOpen}
+          onClose={() => setIsUpgradeModalOpen(false)}
+          orgId={activeOrg.id}
+          orgName={activeOrg.name}
+          resourceName="agendamentos"
+          limit={10}
+        />
+      )}
     </AppLayout>
   );
 }

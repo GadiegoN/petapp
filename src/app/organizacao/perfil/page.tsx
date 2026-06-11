@@ -4,16 +4,32 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
+  arrayRemove,
+  arrayUnion,
   collection,
   doc,
   documentId,
+  getDocs,
+  limit,
   onSnapshot,
   query,
   serverTimestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
-import { Store, Save, MapPin, Navigation, Map } from "lucide-react";
+import {
+  Store,
+  Save,
+  MapPin,
+  Navigation,
+  Map,
+  Crown,
+  Sparkles,
+  Lock,
+  Plus,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/app-layout";
 import { UserSummary } from "@/components/auth/user-summary";
@@ -50,6 +66,14 @@ export default function OrgProfilePage() {
   const [activeOrgId, setActiveOrgId] = useState("");
   const [isOrgsLoading, setIsOrgsLoading] = useState(true);
 
+  const activeOrg = organizations.find((o) => o.id === activeOrgId);
+  const isOwnerOrAdmin =
+    profile?.role === "admin" || (activeOrg && activeOrg.ownerUserId === user?.uid);
+
+  // Members Management Fields
+  const [memberEmail, setMemberEmail] = useState("");
+  const [isAddingMember, setIsAddingMember] = useState(false);
+
   // Form Fields
   const [name, setName] = useState("");
   const [type, setType] = useState("petshop");
@@ -73,6 +97,8 @@ export default function OrgProfilePage() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [plan, setPlan] = useState<"free" | "pro">("free");
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -128,7 +154,9 @@ export default function OrgProfilePage() {
       setDocument(org.document || "");
       setPhone(org.phone || "");
       setEmail(org.email || "");
-      setIsPublic(org.isPublicPartner === true);
+      const isOrgPlanPro = org.plan === "pro";
+      setPlan(org.plan || "free");
+      setIsPublic(isOrgPlanPro ? org.isPublicPartner === true : false);
 
       setStreet(org.address?.street || "");
       setNumber(org.address?.number || "");
@@ -215,6 +243,118 @@ export default function OrgProfilePage() {
     );
   }
 
+  // Handle plan upgrade via Stripe Checkout
+  async function handleUpgradePlan() {
+    if (!user || !activeOrgId) return;
+    setIsUpgrading(true);
+    try {
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: activeOrgId,
+          userId: user.uid,
+        }),
+      });
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error(data.error || "Erro ao iniciar checkout");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Erro ao realizar upgrade.");
+    } finally {
+      setIsUpgrading(false);
+    }
+  }
+
+  // Handle adding a team member
+  async function handleAddMember() {
+    if (!db || !activeOrgId || !activeOrg) return;
+
+    const emailToFind = memberEmail.trim().toLowerCase();
+    if (!emailToFind) {
+      toast.error("Por favor, digite um e-mail válido.");
+      return;
+    }
+
+    const currentMembers = activeOrg.members || [];
+    if (currentMembers.length >= 3) {
+      toast.error("O limite máximo é de 3 membros na equipe.");
+      return;
+    }
+
+    setIsAddingMember(true);
+    try {
+      const usersRef = collection(db, "users");
+      const q = query(usersRef, where("email", "==", emailToFind), limit(1));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        toast.error("Usuário não cadastrado. Peça para o membro se cadastrar no app primeiro.");
+        setIsAddingMember(false);
+        return;
+      }
+
+      const userDoc = querySnapshot.docs[0];
+      const userData = userDoc.data();
+      const userUid = userDoc.id;
+
+      if (userUid === activeOrg.ownerUserId) {
+        toast.error("Este usuário é o dono da organização.");
+        setIsAddingMember(false);
+        return;
+      }
+
+      const currentMemberIds = activeOrg.memberUserIds || [];
+      if (currentMemberIds.includes(userUid)) {
+        toast.error("Este usuário já faz parte da equipe.");
+        setIsAddingMember(false);
+        return;
+      }
+
+      const newMember = {
+        uid: userUid,
+        displayName: userData.displayName || "Sem nome",
+        email: userData.email,
+      };
+
+      await updateDoc(doc(db, "organizations", activeOrgId), {
+        memberUserIds: arrayUnion(userUid),
+        members: arrayUnion(newMember),
+      });
+
+      setMemberEmail("");
+      toast.success("Membro adicionado com sucesso!");
+    } catch (err) {
+      console.error("Erro ao adicionar membro:", err);
+      toast.error("Erro ao adicionar membro da equipe.");
+    } finally {
+      setIsAddingMember(false);
+    }
+  }
+
+  // Handle removing a team member
+  async function handleRemoveMember(memberUid: string) {
+    if (!db || !activeOrgId || !activeOrg) return;
+
+    const memberToRemove = activeOrg.members?.find((m) => m.uid === memberUid);
+    if (!memberToRemove) return;
+
+    try {
+      await updateDoc(doc(db, "organizations", activeOrgId), {
+        memberUserIds: arrayRemove(memberUid),
+        members: arrayRemove(memberToRemove),
+      });
+      toast.success("Membro removido com sucesso.");
+    } catch (err) {
+      console.error("Erro ao remover membro:", err);
+      toast.error("Erro ao remover membro da equipe.");
+    }
+  }
+
   // Handle saving profile changes
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -233,7 +373,7 @@ export default function OrgProfilePage() {
         document: document.trim(),
         phone: phone.trim(),
         email: email.trim(),
-        isPublicPartner: isPublic,
+        isPublicPartner: plan === "pro" ? isPublic : false,
         address: {
           street: street.trim(),
           number: number.trim(),
@@ -280,8 +420,6 @@ export default function OrgProfilePage() {
     );
   }
 
-  const activeOrg = organizations.find((o) => o.id === activeOrgId);
-
   return (
     <AppLayout showNavigation>
       <main className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6">
@@ -324,6 +462,11 @@ export default function OrgProfilePage() {
           </div>
         ) : (
           <form onSubmit={handleSave} className="grid gap-6 lg:grid-cols-2">
+            {!isOwnerOrAdmin && (
+              <div className="lg:col-span-2 rounded-lg border border-warning-border bg-warning-bg/40 p-4 text-sm text-warning leading-relaxed">
+                Você está visualizando esta organização como membro da equipe. Apenas o proprietário (Dono) pode editar as informações ou alterar o plano.
+              </div>
+            )}
             
             {/* Left Column: Details & Address */}
             <div className="space-y-6">
@@ -340,6 +483,7 @@ export default function OrgProfilePage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Nome público"
+                  disabled={!isOwnerOrAdmin}
                 />
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -355,6 +499,7 @@ export default function OrgProfilePage() {
                       { value: "public_agency", label: "Agência Pública" },
                     ]}
                     required
+                    disabled={!isOwnerOrAdmin}
                   />
 
                   <InputField
@@ -362,6 +507,7 @@ export default function OrgProfilePage() {
                     value={document}
                     onChange={(e) => setDocument(e.target.value)}
                     placeholder="00.000.000/0001-00"
+                    disabled={!isOwnerOrAdmin}
                   />
                 </div>
 
@@ -372,6 +518,7 @@ export default function OrgProfilePage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="(00) 00000-0000"
+                    disabled={!isOwnerOrAdmin}
                   />
 
                   <InputField
@@ -380,18 +527,74 @@ export default function OrgProfilePage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="contato@empresa.com"
+                    disabled={!isOwnerOrAdmin}
                   />
                 </div>
 
-                <label className="flex items-center gap-3 rounded-md border border-bd-muted bg-surface-3 px-3 py-2 text-sm font-bold text-white cursor-pointer select-none">
+                <label className={`flex items-center gap-3 rounded-md border border-bd-muted bg-surface-3 px-3 py-2 text-sm font-bold text-white select-none ${plan === "free" || !isOwnerOrAdmin ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
                   <input
                     type="checkbox"
-                    checked={isPublic}
+                    checked={plan === "pro" && isPublic}
+                    disabled={plan === "free" || !isOwnerOrAdmin}
                     onChange={(e) => setIsPublic(e.target.checked)}
-                    className="size-4 accent-accent cursor-pointer"
+                    className="size-4 accent-accent cursor-pointer disabled:cursor-not-allowed"
                   />
                   Exibir no mapa público do Mundo Pet
                 </label>
+                {plan === "free" && (
+                  <p className="text-xs text-amber-500 font-medium mt-1">
+                    * Disponível apenas no Plano Pro. Faça o upgrade abaixo para ativar.
+                  </p>
+                )}
+              </section>
+
+              {/* Subscription Plan Section */}
+              <section className="rounded-lg border border-bd-muted bg-surface p-5 space-y-4">
+                <h2 className="text-base font-bold text-white border-b border-bd-muted pb-3 flex items-center gap-2">
+                  <Crown className="size-5 text-accent" /> Plano de Assinatura
+                </h2>
+
+                {plan === "pro" ? (
+                  <div className="rounded-md border border-accent/20 bg-accent/5 p-4 flex items-center gap-3">
+                    <div className="size-10 rounded-full bg-accent/20 text-accent flex items-center justify-center shrink-0">
+                      <Crown className="size-5" strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                        Plano Pro Ativo <Sparkles className="size-4 text-amber-400 animate-pulse" />
+                      </h3>
+                      <p className="text-xs text-muted mt-0.5">
+                        Todos os limites de clientes, pets e agendamentos foram desbloqueados.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-md border border-bd-muted bg-surface-3 p-4 flex items-center gap-3">
+                      <div className="size-10 rounded-full bg-surface-2 text-muted flex items-center justify-center shrink-0">
+                        <Crown className="size-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">
+                          Plano Gratuito
+                        </h3>
+                        <p className="text-xs text-muted mt-0.5">
+                          Limite de 5 clientes, 5 pets e 10 agendamentos na plataforma.
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      onClick={() => void handleUpgradePlan()}
+                      disabled={isUpgrading || !isOwnerOrAdmin}
+                      variant="primary"
+                      className="w-full flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(155,135,255,0.25)]"
+                    >
+                      <span>{isUpgrading ? "Processando..." : "Fazer Upgrade para Pro"}</span>
+                    </Button>
+                  </div>
+                )}
               </section>
 
               {/* Physical Address */}
@@ -407,6 +610,7 @@ export default function OrgProfilePage() {
                       value={street}
                       onChange={(e) => setStreet(e.target.value)}
                       placeholder="Rua das Palmeiras"
+                      disabled={!isOwnerOrAdmin}
                     />
                   </div>
                   <InputField
@@ -414,6 +618,7 @@ export default function OrgProfilePage() {
                     value={number}
                     onChange={(e) => setNumber(e.target.value)}
                     placeholder="123"
+                    disabled={!isOwnerOrAdmin}
                   />
                 </div>
 
@@ -423,6 +628,7 @@ export default function OrgProfilePage() {
                     value={district}
                     onChange={(e) => setDistrict(e.target.value)}
                     placeholder="Centro"
+                    disabled={!isOwnerOrAdmin}
                   />
 
                   <InputField
@@ -430,6 +636,7 @@ export default function OrgProfilePage() {
                     value={complement}
                     onChange={(e) => setComplement(e.target.value)}
                     placeholder="Ex: Sala 2, Fundos"
+                    disabled={!isOwnerOrAdmin}
                   />
                 </div>
 
@@ -440,6 +647,7 @@ export default function OrgProfilePage() {
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
                       placeholder="Belo Horizonte"
+                      disabled={!isOwnerOrAdmin}
                     />
                   </div>
 
@@ -449,6 +657,7 @@ export default function OrgProfilePage() {
                     onChange={(e) => setState(e.target.value)}
                     placeholder="MG"
                     maxLength={2}
+                    disabled={!isOwnerOrAdmin}
                   />
                 </div>
 
@@ -457,13 +666,14 @@ export default function OrgProfilePage() {
                   value={postalCode}
                   onChange={(e) => setPostalCode(e.target.value)}
                   placeholder="00000-000"
+                  disabled={!isOwnerOrAdmin}
                 />
               </section>
             </div>
 
             {/* Right Column: Interactive Map Geolocation */}
             <div className="space-y-6">
-              <section className="rounded-lg border border-bd-muted bg-surface p-5 space-y-4 flex flex-col h-full justify-between">
+              <section className="rounded-lg border border-bd-muted bg-surface p-5 space-y-4 flex flex-col">
                 <div>
                   <h2 className="text-base font-bold text-white border-b border-bd-muted pb-3 flex items-center gap-2 mb-4">
                     <MapPin className="size-5 text-accent" /> Geolocalização no Mapa
@@ -477,7 +687,7 @@ export default function OrgProfilePage() {
                     <Button
                       type="button"
                       onClick={() => void handleGeocode()}
-                      disabled={isGeocoding}
+                      disabled={isGeocoding || !isOwnerOrAdmin}
                       variant="secondary"
                       size="sm"
                       className="flex-1"
@@ -489,6 +699,7 @@ export default function OrgProfilePage() {
                     <Button
                       type="button"
                       onClick={handleUseGPS}
+                      disabled={!isOwnerOrAdmin}
                       variant="outline"
                       size="sm"
                       icon={<Navigation className="size-4" />}
@@ -501,6 +712,7 @@ export default function OrgProfilePage() {
                   <LocationSelectorMap
                     latitude={lat}
                     longitude={lng}
+                    readonly={!isOwnerOrAdmin}
                     onChange={(newLat, newLng) => {
                       setLat(newLat);
                       setLng(newLng);
@@ -516,6 +728,7 @@ export default function OrgProfilePage() {
                       value={lat}
                       onChange={(e) => setLat(parseFloat(e.target.value) || 0)}
                       required
+                      disabled={!isOwnerOrAdmin}
                     />
 
                     <InputField
@@ -525,6 +738,7 @@ export default function OrgProfilePage() {
                       value={lng}
                       onChange={(e) => setLng(parseFloat(e.target.value) || 0)}
                       required
+                      disabled={!isOwnerOrAdmin}
                     />
                   </div>
                 </div>
@@ -535,12 +749,125 @@ export default function OrgProfilePage() {
                     variant="primary"
                     size="lg"
                     className="w-full sm:w-auto px-8"
-                    disabled={isSaving}
+                    disabled={isSaving || !isOwnerOrAdmin}
                     icon={<Save className="size-4" />}
                   >
                     {isSaving ? "Salvando..." : "Salvar Configurações"}
                   </Button>
                 </div>
+              </section>
+
+              {/* Seção de Membros da Equipe */}
+              <section className="rounded-lg border border-bd-muted bg-surface p-5 space-y-4">
+                <h2 className="text-base font-bold text-white border-b border-bd-muted pb-3 flex items-center gap-2">
+                  <Users className="size-5 text-accent" /> Membros da Equipe
+                </h2>
+
+                {plan !== "pro" ? (
+                  <div className="rounded-lg border border-bd-muted bg-surface-3 p-6 text-center space-y-4 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full blur-2xl pointer-events-none" />
+                    <div className="mx-auto size-12 rounded-full bg-accent/10 flex items-center justify-center text-accent">
+                      <Lock className="size-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-bold text-white">Disponível no Plano Pro</h3>
+                      <p className="text-xs text-muted max-w-xs mx-auto">
+                        Adicione até 3 membros na sua equipe para colaborar e gerenciar clientes, pets e a agenda.
+                      </p>
+                    </div>
+                    {isOwnerOrAdmin && (
+                      <Button
+                        type="button"
+                        onClick={() => void handleUpgradePlan()}
+                        disabled={isUpgrading}
+                        variant="primary"
+                        size="sm"
+                        className="w-full max-w-xs mx-auto flex items-center justify-center"
+                      >
+                        {isUpgrading ? "Processando..." : "Fazer Upgrade para Pro"}
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Listagem de Membros */}
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-bold uppercase text-muted tracking-wider">
+                        Membros Ativos ({activeOrg?.members?.length || 0} de 3)
+                      </h3>
+
+                      {!activeOrg?.members || activeOrg.members.length === 0 ? (
+                        <p className="text-xs text-muted italic p-3 bg-surface-3 rounded-md border border-bd-muted/50">
+                          Nenhum membro adicionado ainda.
+                        </p>
+                      ) : (
+                        <div className="divide-y divide-bd-muted/30 rounded-md border border-bd-muted/50 bg-surface-3 overflow-hidden">
+                          {activeOrg.members.map((member) => (
+                            <div key={member.uid} className="flex items-center justify-between p-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-white truncate">
+                                  {member.displayName}
+                                </p>
+                                <p className="text-xs text-muted truncate">
+                                  {member.email}
+                                </p>
+                              </div>
+                              {isOwnerOrAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRemoveMember(member.uid)}
+                                  className="p-1 text-muted hover:text-danger transition-colors rounded hover:bg-surface-4 ml-2"
+                                  title="Remover membro"
+                                >
+                                  <Trash2 className="size-4" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Formulário para Adicionar */}
+                    {isOwnerOrAdmin && (
+                      <div className="pt-2 border-t border-bd-muted/50 space-y-3">
+                        <h3 className="text-xs font-bold uppercase text-muted tracking-wider">
+                          Adicionar Novo Membro
+                        </h3>
+                        <div className="flex gap-2 items-end">
+                          <div className="flex-1">
+                            <InputField
+                              label="E-mail do Usuário"
+                              type="email"
+                              placeholder="exemplo@email.com"
+                              value={memberEmail}
+                              onChange={(e) => setMemberEmail(e.target.value)}
+                              disabled={isAddingMember || (activeOrg?.members?.length || 0) >= 3}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            onClick={() => void handleAddMember()}
+                            disabled={isAddingMember || !memberEmail.trim() || (activeOrg?.members?.length || 0) >= 3}
+                            variant="primary"
+                            className="h-11 shrink-0"
+                            icon={<Plus className="size-4" />}
+                          >
+                            {isAddingMember ? "..." : "Adicionar"}
+                          </Button>
+                        </div>
+                        {(activeOrg?.members?.length || 0) >= 3 && (
+                          <p className="text-xs text-warning-border">
+                            Limite de 3 membros atingido. Remova um membro para adicionar outro.
+                          </p>
+                        )}
+                        <p className="text-[10px] text-muted leading-normal">
+                          O usuário precisa já estar cadastrado na plataforma para ser adicionado à equipe.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
             </div>
 
