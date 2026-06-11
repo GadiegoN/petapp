@@ -15,8 +15,76 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Mundo Pet | Sua agenda",
-  description: "Agenda responsiva para atendimentos de petshop.",
+  metadataBase: new URL("https://petapp-orcin.vercel.app"),
+
+  title: {
+    default: "Mundo Pet Comunitário",
+    template: "%s | Mundo Pet Comunitário",
+  },
+
+  description:
+    "Plataforma comunitária para acompanhamento de cães de rua, pontos de apoio, adoção, resgate, petshops parceiros e gestão animal.",
+
+  keywords: [
+    "cães de rua",
+    "adoção de cães",
+    "resgate animal",
+    "petshop",
+    "mundo pet",
+    "mapa de cães",
+    "pontos de apoio animal",
+    "ONG animal",
+    "animais desaparecidos",
+    "proteção animal",
+  ],
+
+  authors: [
+    {
+      name: "Mundo Pet Comunitário",
+    },
+  ],
+
+  creator: "Mundo Pet Comunitário",
+
+  publisher: "Mundo Pet Comunitário",
+
+  robots: {
+    index: true,
+    follow: true,
+  },
+
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    url: "https://mundopet.com.br",
+    siteName: "Mundo Pet Comunitário",
+    title: "Mundo Pet Comunitário",
+    description:
+      "Plataforma comunitária para acompanhamento de cães de rua, pontos de apoio, adoção e parceiros.",
+    images: [
+      {
+        url: "/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Mundo Pet Comunitário",
+      },
+    ],
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: "Mundo Pet Comunitário",
+    description:
+      "Plataforma comunitária para acompanhamento de cães de rua, adoção e pontos de apoio.",
+    images: ["/og-image.jpg"],
+  },
+
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
+
+  category: "animals",
 };
 
 export default function RootLayout({
